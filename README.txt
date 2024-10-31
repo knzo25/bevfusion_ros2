@@ -25,3 +25,10 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continu
 source install/setup.bash
 ros2 launch autoware_lidar_bevfusion lidar_bevfusion.launch.xml model_path:=/workspace/autoware/src/autoware_lidar_bevfusion/config
 ```
+
+# Notes
+
+ - BEVFusion lidar only and camera-lidar are compatible, although the current code only allows for camera-lidar
+ - Can not be integrated into autoware due to TensorRT 10
+ - Since it uses mmcv's ops, it requires LibTorch. I will replace it by libspconv in the future
+ - It is slow, which is due to MMCV's implementation, some TensorRT concerns and fp32
