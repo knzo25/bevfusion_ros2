@@ -28,8 +28,10 @@ namespace autoware::lidar_bevfusion
 inline NetworkIO nameToNetworkIO(const char * name)
 {
   static const std::unordered_map<std::string_view, NetworkIO> name_to_enum = {
-    {"voxels", NetworkIO::voxels},        {"num_points", NetworkIO::num_points},
-    {"coors", NetworkIO::coors},          {"cls_score0", NetworkIO::cls_score},
+    {"voxels", NetworkIO::voxels},        
+    {"coors", NetworkIO::coors},          
+    {"num_points_per_voxel", NetworkIO::num_points_per_voxel},
+    {"cls_score0", NetworkIO::cls_score},
     {"bbox_pred0", NetworkIO::bbox_pred}, {"dir_cls_pred0", NetworkIO::dir_pred}};
 
   auto it = name_to_enum.find(name);
@@ -82,6 +84,13 @@ NetworkTRT::NetworkTRT(const BEVFusionConfig & config) : config_(config)
 
   ProfileDimension coors_dims = {coors_min_dims, coors_opt_dims, coors_max_dims};
   in_profile_dims_["coors"] = coors_dims;
+
+  nvinfer1::Dims points_per_voxel_min_dims = nvinfer1::Dims{1, {voxels_num_min}};
+  nvinfer1::Dims points_per_voxel_opt_dims = nvinfer1::Dims{1, {voxels_num_opt}};
+  nvinfer1::Dims points_per_voxel_max_dims = nvinfer1::Dims{1, {voxels_num_max}};
+
+  ProfileDimension points_per_voxel_dims = {points_per_voxel_min_dims, points_per_voxel_opt_dims, points_per_voxel_max_dims};
+  in_profile_dims_["points_per_voxel"] = points_per_voxel_dims;
 
   auto roi_height = static_cast<std::int64_t>(config.roi_height_);
   auto roi_width = static_cast<std::int64_t>(config.roi_width_);
@@ -363,6 +372,7 @@ bool NetworkTRT::validateNetworkIO()
   // Whether the IO tensor shapes match the network config, -1 for dynamic size
   validateTensorShape("voxels", {-1, 5});
   validateTensorShape("coors", {-1, 4});
+  validateTensorShape("num_points_per_voxel", {-1});
   validateTensorShape(
     "imgs", {-1, 3, static_cast<int>(config_.roi_height_), static_cast<int>(config_.roi_width_)});
   validateTensorShape("lidar2image", {-1, 4, 4});

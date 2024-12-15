@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/tensorrt_plugins/get_indice_pairs_3d_forward_plugin_creator.hpp"
-
-#include "autoware/tensorrt_plugins/get_indice_pairs_3d_forward_plugin.hpp"
+#include "autoware/tensorrt_plugins//get_indice_pairs_implicit_gemm_plugin_creator.hpp"
+#include "autoware/tensorrt_plugins//get_indice_pairs_implicit_gemm_plugin.hpp"
 #include "autoware/tensorrt_plugins/plugin_utils.hpp"
 
 #include <NvInferRuntimePlugin.h>
@@ -29,21 +28,25 @@ namespace nvinfer1
 namespace plugin
 {
 
-REGISTER_TENSORRT_PLUGIN(GetIndicePairs3dForwardPluginCreator);
+REGISTER_TENSORRT_PLUGIN(GetIndicePairsImplicitGemmPluginCreator);
 
-GetIndicePairs3dForwardPluginCreator::GetIndicePairs3dForwardPluginCreator()
+GetIndicePairsImplicitGemmPluginCreator::GetIndicePairsImplicitGemmPluginCreator()
 {
+  std::cout << "GetIndicePairsImplicitGemmPluginCreator::GetIndicePairsImplicitGemmPluginCreator" << std::endl << std::flush;
+
   plugin_attributes_.clear();
+  plugin_attributes_.emplace_back(
+    nvinfer1::PluginField("algo", nullptr, PluginFieldType::kINT32, 1));
   plugin_attributes_.emplace_back(
     nvinfer1::PluginField("batch_size", nullptr, PluginFieldType::kINT32, 1));
   plugin_attributes_.emplace_back(
     nvinfer1::PluginField("dilation", nullptr, PluginFieldType::kINT32, 3));
   plugin_attributes_.emplace_back(
+    nvinfer1::PluginField("is_train", nullptr, PluginFieldType::kINT32, 1));
+  plugin_attributes_.emplace_back(
     nvinfer1::PluginField("ksize", nullptr, PluginFieldType::kINT32, 3));
   plugin_attributes_.emplace_back(
     nvinfer1::PluginField("out_padding", nullptr, PluginFieldType::kINT32, 3));
-  plugin_attributes_.emplace_back(
-    nvinfer1::PluginField("out_shape", nullptr, PluginFieldType::kINT32, 3));
   plugin_attributes_.emplace_back(
     nvinfer1::PluginField("padding", nullptr, PluginFieldType::kINT32, 3));
   plugin_attributes_.emplace_back(
@@ -60,13 +63,13 @@ GetIndicePairs3dForwardPluginCreator::GetIndicePairs3dForwardPluginCreator()
 }
 
 nvinfer1::PluginFieldCollection const *
-GetIndicePairs3dForwardPluginCreator::getFieldNames() noexcept
+GetIndicePairsImplicitGemmPluginCreator::getFieldNames() noexcept
 {
   // This is only used in the build phase.
   return &fc_;
 }
 
-IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
+IPluginV3 * GetIndicePairsImplicitGemmPluginCreator::createPlugin(
   char const * name, PluginFieldCollection const * fc, TensorRTPhase phase) noexcept
 {
   // The build phase and the deserialization phase are handled differently.
@@ -76,9 +79,9 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
 
-      PLUGIN_VALIDATE(num_fields == 10);
+      PLUGIN_VALIDATE(num_fields == 11);
 
-      GetIndicePairs3dForwardParameters parameters;
+      GetIndicePairsImplicitGemmParameters parameters;
 
       for (std::int32_t i{0}; i < num_fields; ++i) {
         const std::string attr_name = fields[i].name;
@@ -87,7 +90,17 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
         if (attr_name == "batch_size") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
           parameters.batch_size =
-            static_cast<std::int64_t>(static_cast<std::int32_t const *>(fields[i].data)[0]);
+            static_cast<std::int32_t const *>(fields[i].data)[0];
+        }
+        if (attr_name == "algo") {
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.algo =
+            static_cast<std::int32_t const *>(fields[i].data)[0];
+        }
+        if (attr_name == "is_train") {
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.is_train =
+            static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "dilation") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
@@ -96,7 +109,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
 
           parameters.dilation_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.dilation.push_back(static_cast<std::int64_t>(dilation_data[j]));
+            parameters.dilation.push_back(dilation_data[j]);
             parameters.dilation_dims.d[j] = static_cast<std::int64_t>(dilation_data[j]);
           }
         }
@@ -104,7 +117,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kDIMS);
           parameters.dilation_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.dilation_dims.nbDims; ++j) {
-            parameters.dilation.push_back(static_cast<std::int64_t>(parameters.dilation_dims.d[j]));
+            parameters.dilation.push_back(static_cast<std::int32_t>(parameters.dilation_dims.d[j]));
           }
         }
         if (attr_name == "ksize") {
@@ -112,7 +125,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           std::int32_t const * const ksize_data{static_cast<std::int32_t const *>(fields[i].data)};
           parameters.ksize_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.ksize.push_back(static_cast<std::int64_t>(ksize_data[j]));
+            parameters.ksize.push_back(ksize_data[j]);
             parameters.ksize_dims.d[j] = static_cast<std::int64_t>(ksize_data[j]);
           }
         }
@@ -120,7 +133,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kDIMS);
           parameters.ksize_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.ksize_dims.nbDims; ++j) {
-            parameters.ksize.push_back(static_cast<std::int64_t>(parameters.ksize_dims.d[j]));
+            parameters.ksize.push_back(static_cast<std::int32_t>(parameters.ksize_dims.d[j]));
           }
         }
         if (attr_name == "out_padding") {
@@ -129,7 +142,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
             static_cast<std::int32_t const *>(fields[i].data)};
           parameters.out_padding_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.out_padding.push_back(static_cast<std::int64_t>(out_padding_data[j]));
+            parameters.out_padding.push_back(out_padding_data[j]);
             parameters.out_padding_dims.d[j] = static_cast<std::int64_t>(out_padding_data[j]);
           }
         }
@@ -138,25 +151,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           parameters.out_padding_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.out_padding_dims.nbDims; ++j) {
             parameters.out_padding.push_back(
-              static_cast<std::int64_t>(parameters.out_padding_dims.d[j]));
-          }
-        }
-        if (attr_name == "out_shape") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          std::int32_t const * const out_shape_data{
-            static_cast<std::int32_t const *>(fields[i].data)};
-          parameters.out_shape_dims.nbDims = fields[i].length;
-          for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.out_shape.push_back(static_cast<std::int64_t>(out_shape_data[j]));
-            parameters.out_shape_dims.d[j] = static_cast<std::int64_t>(out_shape_data[j]);
-          }
-        }
-        if (attr_name == "out_shape_dims") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kDIMS);
-          parameters.out_shape_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
-          for (std::int32_t j{0}; j < parameters.out_shape_dims.nbDims; ++j) {
-            parameters.out_shape.push_back(
-              static_cast<std::int64_t>(parameters.out_shape_dims.d[j]));
+              static_cast<std::int32_t>(parameters.out_padding_dims.d[j]));
           }
         }
         if (attr_name == "padding") {
@@ -165,7 +160,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
             static_cast<std::int32_t const *>(fields[i].data)};
           parameters.padding_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.padding.push_back(static_cast<std::int64_t>(padding_data[j]));
+            parameters.padding.push_back(padding_data[j]);
             parameters.padding_dims.d[j] = static_cast<std::int64_t>(padding_data[j]);
           }
         }
@@ -173,7 +168,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kDIMS);
           parameters.padding_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.padding_dims.nbDims; ++j) {
-            parameters.padding.push_back(static_cast<std::int64_t>(parameters.padding_dims.d[j]));
+            parameters.padding.push_back(static_cast<std::int32_t>(parameters.padding_dims.d[j]));
           }
         }
         if (attr_name == "spatial_shape") {
@@ -182,7 +177,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
             static_cast<std::int32_t const *>(fields[i].data)};
           parameters.spatial_shape_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.spatial_shape.push_back(static_cast<std::int64_t>(spatial_shape_data[j]));
+            parameters.spatial_shape.push_back(spatial_shape_data[j]);
             parameters.spatial_shape_dims.d[j] = static_cast<std::int64_t>(spatial_shape_data[j]);
           }
         }
@@ -191,7 +186,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           parameters.spatial_shape_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.spatial_shape_dims.nbDims; ++j) {
             parameters.spatial_shape.push_back(
-              static_cast<std::int64_t>(parameters.spatial_shape_dims.d[j]));
+              static_cast<std::int32_t>(parameters.spatial_shape_dims.d[j]));
           }
         }
         if (attr_name == "stride") {
@@ -199,7 +194,7 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           std::int32_t const * const stride_data{static_cast<std::int32_t const *>(fields[i].data)};
           parameters.stride_dims.nbDims = fields[i].length;
           for (std::int32_t j{0}; j < fields[i].length; ++j) {
-            parameters.stride.push_back(static_cast<std::int64_t>(stride_data[j]));
+            parameters.stride.push_back(stride_data[j]);
             parameters.stride_dims.d[j] = static_cast<std::int64_t>(stride_data[j]);
           }
         }
@@ -207,18 +202,18 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kDIMS);
           parameters.stride_dims = static_cast<nvinfer1::Dims const *>(fields[i].data)[0];
           for (std::int32_t j{0}; j < parameters.stride_dims.nbDims; ++j) {
-            parameters.stride.push_back(static_cast<std::int64_t>(parameters.stride_dims.d[j]));
+            parameters.stride.push_back(static_cast<std::int32_t>(parameters.stride_dims.d[j]));
           }
         }
         if (attr_name == "subm") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
           parameters.subm =
-            static_cast<std::int64_t>(static_cast<std::int32_t const *>(fields[i].data)[0]);
+            static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "transpose") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
           parameters.transpose =
-            static_cast<std::int64_t>(static_cast<std::int32_t const *>(fields[i].data)[0]);
+            static_cast<std::int32_t const *>(fields[i].data)[0];
         }
       }
 
@@ -229,6 +224,14 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
 
       ss.str("");
       ss << "batch_size: " << parameters.batch_size;
+      logDebug(ss.str().c_str());
+
+      ss.str("");
+      ss << "algo: " << parameters.algo;
+      logDebug(ss.str().c_str());
+
+      ss.str("");
+      ss << "is_train: " << parameters.is_train;
       logDebug(ss.str().c_str());
 
       ss.str("");
@@ -252,11 +255,6 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
       }
       logDebug(ss.str().c_str());
 
-      ss.str("");
-      ss << "out_shape: ";
-      for (auto const & val : parameters.out_shape) {
-        ss << val << " ";
-      }
       logDebug(ss.str().c_str());
 
       ss.str("");
@@ -288,8 +286,8 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
       ss << "transpose: " << parameters.transpose;
       logDebug(ss.str().c_str());
 
-      GetIndicePairs3dForwardPlugin * const plugin{
-        new GetIndicePairs3dForwardPlugin{std::string(name), parameters}};
+      GetIndicePairsImplicitGemmPlugin * const plugin{
+        new GetIndicePairsImplicitGemmPlugin{std::string(name), parameters}};
       return plugin;
     } catch (std::exception const & e) {
       caughtError(e);
@@ -305,12 +303,12 @@ IPluginV3 * GetIndicePairs3dForwardPluginCreator::createPlugin(
       char const * attr_name = fields[0].name;
       PLUGIN_VALIDATE(!strcmp(attr_name, "parameters"));
       PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
-      PLUGIN_VALIDATE(fields[0].length == sizeof(GetIndicePairs3dForwardParameters));
-      GetIndicePairs3dForwardParameters params{
-        *(static_cast<GetIndicePairs3dForwardParameters const *>(fields[0].data))};
+      PLUGIN_VALIDATE(fields[0].length == sizeof(GetIndicePairsImplicitGemmParameters));
+      GetIndicePairsImplicitGemmParameters params{
+        *(static_cast<GetIndicePairsImplicitGemmParameters const *>(fields[0].data))};
 
-      GetIndicePairs3dForwardPlugin * const plugin{
-        new GetIndicePairs3dForwardPlugin{std::string(name), params}};
+      GetIndicePairsImplicitGemmPlugin * const plugin{
+        new GetIndicePairsImplicitGemmPlugin{std::string(name), params}};
       return plugin;
     } catch (std::exception const & e) {
       caughtError(e);

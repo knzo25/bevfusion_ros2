@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TENSORRT_PLUGINS__SPARSE_CONV_PLUGIN_CREATOR_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__SPARSE_CONV_PLUGIN_CREATOR_HPP_
+#ifndef AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_
+#define AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_
 
-#include "autoware/tensorrt_plugins/sparse_conv_plugin.hpp"
+#include "autoware/tensorrt_plugins/get_indice_pairs_implicit_gemm_plugin.hpp"
 
 #include <NvInferRuntime.h>
 
@@ -27,21 +27,27 @@ namespace plugin
 {
 
 // Plugin factory class.
-class SparseConvPluginCreator : public nvinfer1::IPluginCreatorV3One
+class GetIndicePairsImplicitGemmPluginCreator : public nvinfer1::IPluginCreatorV3One
 {
 public:
-  SparseConvPluginCreator();
+  GetIndicePairsImplicitGemmPluginCreator();
 
-  ~SparseConvPluginCreator() override = default;
+  ~GetIndicePairsImplicitGemmPluginCreator() override = default;
 
   char const * getPluginNamespace() const noexcept override
   {
-    return kSPARSE_CONV_PLUGIN_NAMESPACE;
+    return kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAMESPACE;
   }
 
-  char const * getPluginName() const noexcept override { return kSPARSE_CONV_PLUGIN_NAME; }
+  char const * getPluginName() const noexcept override
+  {
+    return kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAME;
+  }
 
-  char const * getPluginVersion() const noexcept override { return kSPARSE_CONV_PLUGIN_VERSION; }
+  char const * getPluginVersion() const noexcept override
+  {
+    return kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_VERSION;
+  }
 
   nvinfer1::PluginFieldCollection const * getFieldNames() noexcept override;
 
@@ -56,4 +62,4 @@ private:
 }  // namespace plugin
 }  // namespace nvinfer1
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__SPARSE_CONV_PLUGIN_CREATOR_HPP_
+#endif  // AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_

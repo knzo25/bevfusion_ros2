@@ -115,6 +115,7 @@ protected:
   cuda::unique_ptr<float[]> points_d_{nullptr};
   cuda::unique_ptr<float[]> voxel_features_d_{nullptr};
   cuda::unique_ptr<std::int32_t[]> voxel_coords_d_{nullptr};
+  cuda::unique_ptr<std::int32_t[]> num_points_per_voxel_d_{nullptr};
 
   // pre computed tensors
   std::int64_t num_geom_feats_{};

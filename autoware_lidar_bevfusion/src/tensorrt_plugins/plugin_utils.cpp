@@ -56,7 +56,7 @@ void reportValidation(bool success, char const * msg, char const * file, std::in
   }
 }
 
-torch::Tensor toTensor(nvinfer1::PluginTensorDesc desc, void * data)
+/* torch::Tensor toTensor(nvinfer1::PluginTensorDesc desc, void * data)
 {
   auto get_shape = [](nvinfer1::PluginTensorDesc desc) {
     std::vector<std::int64_t> shape;
@@ -112,4 +112,4 @@ torch::Tensor toConstTensor(nvinfer1::PluginTensorDesc desc, void const * data)
   tensor = tensor.clone().detach();  // Ensures it is detached from the computational graph
 
   return tensor;
-}
+} */

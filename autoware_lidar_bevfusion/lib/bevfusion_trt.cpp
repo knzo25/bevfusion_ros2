@@ -79,6 +79,7 @@ void BEVFusionTRT::initPtr()
   // lidar branch
   voxel_features_d_ = cuda::make_unique<float[]>(voxel_features_size_);
   voxel_coords_d_ = cuda::make_unique<std::int32_t[]>(voxel_coords_size_);
+  num_points_per_voxel_d_ = cuda::make_unique<std::int32_t[]>(config_.max_voxels_);
   points_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.num_point_feature_size_);
 
   // pre computed tensors
@@ -197,13 +198,14 @@ bool BEVFusionTRT::preprocess(
     return false;
   }
 
-  // TODO(knzo25): these should be able to be removed
+  // TODO(knzo25): these should be able to be removed as they are filled by TensorRT
   cuda::clear_async(label_pred_output_d_.get(), config_.num_proposals_, stream_);
   cuda::clear_async(bbox_pred_output_d_.get(), bbox_pred_size_, stream_);
   cuda::clear_async(score_output_d_.get(), config_.num_proposals_, stream_);
 
   cuda::clear_async(voxel_features_d_.get(), voxel_features_size_, stream_);
   cuda::clear_async(voxel_coords_d_.get(), voxel_coords_size_, stream_);
+  cuda::clear_async(num_points_per_voxel_d_.get(), config_.max_voxels_, stream_);
   cuda::clear_async(
     points_d_.get(), config_.cloud_capacity_ * config_.num_point_feature_size_, stream_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
@@ -232,7 +234,7 @@ bool BEVFusionTRT::preprocess(
     rclcpp::get_logger("lidar_bevfusion"), "Generated sweep points: " << num_points);
 
   std::size_t num_voxels = pre_ptr_->generateVoxels(
-    points_d_.get(), num_points, voxel_features_d_.get(), voxel_coords_d_.get());
+    points_d_.get(), num_points, voxel_features_d_.get(), voxel_coords_d_.get(), num_points_per_voxel_d_.get());
   // unsigned int params_input;
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 

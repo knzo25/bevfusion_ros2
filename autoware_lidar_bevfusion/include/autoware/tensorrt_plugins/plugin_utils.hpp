@@ -16,7 +16,7 @@
 #define AUTOWARE__TENSORRT_PLUGINS__PLUGIN_UTILS_HPP_
 
 #include <NvInferRuntime.h>
-#include <torch/torch.h>
+//#include <torch/torch.h>
 
 #include <cstdint>
 #include <cstring>
@@ -33,9 +33,9 @@ void reportAssertion(bool success, char const * msg, char const * file, std::int
 
 #define PLUGIN_VALIDATE(val) reportValidation((val), #val, __FILE__, __LINE__)
 void reportValidation(bool success, char const * msg, char const * file, std::int32_t line);
-
+/* 
 torch::Tensor toTensor(nvinfer1::PluginTensorDesc desc, void * data);
 
-torch::Tensor toConstTensor(nvinfer1::PluginTensorDesc desc, void const * data);
+torch::Tensor toConstTensor(nvinfer1::PluginTensorDesc desc, void const * data); */
 
 #endif  // AUTOWARE__TENSORRT_PLUGINS__PLUGIN_UTILS_HPP_

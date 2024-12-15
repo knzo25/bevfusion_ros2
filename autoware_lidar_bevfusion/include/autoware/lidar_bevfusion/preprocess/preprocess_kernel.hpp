@@ -35,6 +35,8 @@
 #include "autoware/lidar_bevfusion/cuda_utils.hpp"
 #include "autoware/lidar_bevfusion/utils.hpp"
 
+#include <tensorview/tensor.h>
+
 #include <cuda_runtime_api.h>
 
 #include <cstddef>
@@ -56,15 +58,15 @@ public:
     const std::uint8_t * input_data, std::size_t points_size, int input_point_step, float time_lag,
     const float * transform, float * output_points);
 
-  cudaError_t generateVoxels_random_launch(
-    float * points, unsigned int points_size, unsigned int * mask, float * voxels);
-
-  cudaError_t generateBaseFeatures_launch(
-    unsigned int * mask, float * voxels, float * voxel_features, std::int32_t * voxel_coordinates,
-    unsigned int * voxel_num);
+  cudaError_t formatCoors_launch(
+    std::int32_t * input_voxel_coords, std::int32_t * output_voxel_coords, unsigned int num_voxels);
 
   std::size_t generateVoxels(
-    float * points, unsigned int points_size, float * voxel_features, std::int32_t * voxel_coords);
+    const float * points, 
+    unsigned int points_size, 
+    float * voxel_features, 
+    std::int32_t * voxel_coords,
+    std::int32_t * num_points_per_voxel);
 
   cudaError_t resize_and_extract_roi_launch(
     const std::uint8_t * input_img, std::uint8_t * output_img, int H, int W, int H2, int W2, int H3,
@@ -73,11 +75,11 @@ public:
 private:
   BEVFusionConfig config_;
   cudaStream_t stream_;
-  cuda::unique_ptr<unsigned int[]> mask_{nullptr};
-  cuda::unique_ptr<float[]> voxels_{nullptr};
-  unsigned int mask_size_{};
-  unsigned int voxels_size_{};
-  cuda::unique_ptr<unsigned int[]> num_voxels_{nullptr};
+
+  tv::Tensor indices_padded_no_batch_;
+  tv::Tensor hash_key_value_;
+  tv::Tensor point_indice_data_;
+  tv::Tensor points_voxel_id_;
 };
 }  // namespace autoware::lidar_bevfusion
 

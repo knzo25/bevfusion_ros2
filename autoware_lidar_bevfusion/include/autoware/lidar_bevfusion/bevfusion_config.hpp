@@ -30,16 +30,15 @@ public:
     const std::vector<double> & point_cloud_range, const std::vector<double> & voxel_size,
     const std::vector<double> & dbound, const std::vector<double> & xbound,
     const std::vector<double> & ybound, const std::vector<double> & zbound,
-
     const std::size_t num_cameras, const std::size_t raw_image_height,
     const std::size_t raw_image_width, const float img_aug_scale_x, const float img_aug_scale_y,
     const float img_aug_offset_y, const std::size_t roi_height, const std::size_t roi_width,
     const std::size_t features_height, const std::size_t features_width,
     const std::size_t num_depth_features,
-
     const std::size_t num_proposals, const float circle_nms_dist_threshold,
     const std::vector<double> & yaw_norm_thresholds, const float score_threshold)
   {
+    /* use_hash_voxelization_ = use_hash_voxelization; */
     cloud_capacity_ = cloud_capacity;
 
     if (voxels_num.size() == 3) {
@@ -122,7 +121,7 @@ public:
   std::size_t cloud_capacity_{};
   ///// KERNEL PARAMETERS /////
   const std::size_t threads_for_voxel_{256};  // threads number for a block
-  const std::size_t points_per_voxel_{20};
+  const std::size_t points_per_voxel_{10};
   const std::size_t warp_size_{32};          // one warp(32 threads) for one pillar
   const std::size_t pillars_per_block_{64};  // one thread deals with one pillar
                                              // and a block has pillars_per_block threads

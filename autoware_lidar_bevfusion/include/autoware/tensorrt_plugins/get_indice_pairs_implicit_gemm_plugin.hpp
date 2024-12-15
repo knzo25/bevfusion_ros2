@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_HPP_
+#ifndef AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_HPP_
+#define AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_HPP_
 
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
@@ -25,47 +25,47 @@
 #include <string>
 #include <vector>
 
-constexpr char const * const kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_NAME{"GetIndicePairs3dForward"};
-constexpr char const * const kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_VERSION{"1"};
-constexpr char const * const kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_NAMESPACE{""};
+constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAME{"GetIndicePairsImplicitGemm"};
+constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_VERSION{"1"};
+constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAMESPACE{""};
 
 namespace nvinfer1
 {
 namespace plugin
 {
 
-struct GetIndicePairs3dForwardParameters
+struct GetIndicePairsImplicitGemmParameters
 {
-  std::int64_t batch_size;
-  std::vector<std::int64_t> dilation;
-  std::vector<std::int64_t> ksize;
-  std::vector<std::int64_t> out_padding;
-  std::vector<std::int64_t> out_shape;
-  std::vector<std::int64_t> padding;
-  std::vector<std::int64_t> spatial_shape;
-  std::vector<std::int64_t> stride;
-  std::int64_t subm;
-  std::int64_t transpose;
+  std::int32_t batch_size;
+  std::int32_t algo;
+  std::int32_t is_train;
+  std::vector<std::int32_t> dilation;
+  std::vector<std::int32_t> ksize;
+  std::vector<std::int32_t> out_padding;
+  std::vector<std::int32_t> padding;
+  std::vector<std::int32_t> spatial_shape;
+  std::vector<std::int32_t> stride;
+  std::int32_t subm;
+  std::int32_t transpose;
 
   nvinfer1::Dims dilation_dims;
   nvinfer1::Dims ksize_dims;
   nvinfer1::Dims out_padding_dims;
-  nvinfer1::Dims out_shape_dims;
   nvinfer1::Dims padding_dims;
   nvinfer1::Dims spatial_shape_dims;
   nvinfer1::Dims stride_dims;
 };
 
-class GetIndicePairs3dForwardPlugin : public IPluginV3,
+class GetIndicePairsImplicitGemmPlugin : public IPluginV3,
                                       public IPluginV3OneCore,
                                       public IPluginV3OneBuild,
                                       public IPluginV3OneRuntime
 {
 public:
-  GetIndicePairs3dForwardPlugin(
-    const std::string & name, GetIndicePairs3dForwardParameters const & params);
+  GetIndicePairsImplicitGemmPlugin(
+    const std::string & name, GetIndicePairsImplicitGemmParameters const & params);
 
-  ~GetIndicePairs3dForwardPlugin() override = default;
+  ~GetIndicePairsImplicitGemmPlugin() override = default;
 
   // IPluginV3 Methods
 
@@ -124,8 +124,11 @@ public:
 private:
   void initFieldsToSerialize();
 
+  // upper bound of number of output indices. needed to bound memory usage.
+  static constexpr int out_inds_num_limit_{256000};
+
   std::string layer_name_;
-  GetIndicePairs3dForwardParameters params_;
+  GetIndicePairsImplicitGemmParameters params_;
   std::vector<nvinfer1::PluginField> data_to_serialize_;
   nvinfer1::PluginFieldCollection fc_to_serialize_;
 };
@@ -133,4 +136,4 @@ private:
 }  // namespace plugin
 }  // namespace nvinfer1
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_HPP_
+#endif  // AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_HPP_

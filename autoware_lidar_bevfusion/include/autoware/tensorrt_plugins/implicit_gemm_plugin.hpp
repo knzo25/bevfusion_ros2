@@ -12,36 +12,69 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TENSORRT_PLUGINS__INDICE_CONV_PLUGIN_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__INDICE_CONV_PLUGIN_HPP_
+#ifndef AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_HPP_
+#define AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_HPP_
 
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
 #include <cuda_runtime.h>
 
+#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
+#include <spconvlib/spconv/csrc/sparse/convops/gemmops/GemmTunerSimple.h>
+
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+#include <tuple>
+
+constexpr char const * const kIMPLICIT_GEMM_PLUGIN_NAME{"ImplicitGemm"};
+constexpr char const * const kIMPLICIT_GEMM_PLUGIN_VERSION{"1"};
+constexpr char const * const kIMPLICIT_GEMM_PLUGIN_NAMESPACE{""};
 
 namespace nvinfer1
 {
 namespace plugin
 {
 
-class IndiceConvPlugin : public IPluginV3,
-                         public IPluginV3OneCore,
-                         public IPluginV3OneBuild,
-                         public IPluginV3OneRuntime
+struct ImplicitGemmParameters
+{
+  float act_alpha;
+  float act_beta;
+  std::int64_t is_subm;
+  std::int64_t is_train;
+  float output_add_scale;
+  float output_scale;
+};
+
+class ImplicitGemmPlugin : public IPluginV3,
+                                      public IPluginV3OneCore,
+                                      public IPluginV3OneBuild,
+                                      public IPluginV3OneRuntime
 {
 public:
-  explicit IndiceConvPlugin(const std::string & name);
 
-  ~IndiceConvPlugin() override = default;
+  using ConvTunerSimple = spconvlib::spconv::csrc::sparse::convops::spops::ConvTuner;
+  ImplicitGemmPlugin(
+    const std::string & name, ImplicitGemmParameters const & params);
+
+  ~ImplicitGemmPlugin() override = default;
 
   // IPluginV3 Methods
 
   IPluginCapability * getCapabilityInterface(PluginCapabilityType type) noexcept override;
+
+  IPluginV3 * clone() noexcept override;
+
+  // IPluginV3OneCore Methods
+
+  char const * getPluginName() const noexcept override;
+
+  char const * getPluginVersion() const noexcept override;
+
+  char const * getPluginNamespace() const noexcept override;
 
   // IPluginV3OneBuild Methods
 
@@ -52,7 +85,7 @@ public:
     DynamicPluginTensorDesc const * out, std::int32_t num_outputs) noexcept override;
 
   bool supportsFormatCombination(
-    int32_t pos, DynamicPluginTensorDesc const * in_out, std::int32_t num_inputs,
+    std::int32_t pos, DynamicPluginTensorDesc const * in_out, std::int32_t num_inputs,
     std::int32_t num_outputs) noexcept override;
 
   std::int32_t getOutputDataTypes(
@@ -65,6 +98,12 @@ public:
     IExprBuilder & expr_builder) noexcept override;
 
   // IPluginV3OneRuntime Methods
+
+  std::int32_t enqueue(
+    PluginTensorDesc const * input_desc, PluginTensorDesc const * output_desc,
+    void const * const * inputs, void * const * outputs, void * workspace,
+    cudaStream_t stream) noexcept override;
+
   std::int32_t onShapeChange(
     PluginTensorDesc const * in, std::int32_t num_inputs, PluginTensorDesc const * out,
     std::int32_t num_outputs) noexcept override;
@@ -77,15 +116,27 @@ public:
     DynamicPluginTensorDesc const * inputs, std::int32_t num_inputs,
     DynamicPluginTensorDesc const * outputs, std::int32_t num_outputs) const noexcept override;
 
-protected:
+private:
+ 
+  static constexpr std::int32_t INOUT_IN_FEATURES_INDEX = 0;
+  static constexpr std::int32_t INOUT_FILTERS_INDEX = 1;
+  static constexpr std::int32_t INOUT_PAIR_FWD_INDEX = 2;
+  static constexpr std::int32_t INOUT_PAIR_MASK_FWD_SPLITS_INDEX = 3;
+  static constexpr std::int32_t INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX = 4;
+  static constexpr std::int32_t INOUT_OUT_FEATURES_INDEX = 5;
+
   void initFieldsToSerialize();
 
   std::string layer_name_;
+  ImplicitGemmParameters params_;
+  std::tuple<int, int> arch_;
   std::vector<nvinfer1::PluginField> data_to_serialize_;
   nvinfer1::PluginFieldCollection fc_to_serialize_;
+
+  std::unique_ptr<ConvTunerSimple> tunner_ptr_{};
 };
 
 }  // namespace plugin
 }  // namespace nvinfer1
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__INDICE_CONV_PLUGIN_HPP_
+#endif  // AUTOWARE__TENSORRT_PLUGINS__3D_FORWARD_PLUGIN_HPP_

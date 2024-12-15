@@ -70,17 +70,17 @@ IPluginV3 * QuickCumsumCudaPluginCreator::createPlugin(
         const nvinfer1::PluginFieldType type = fields[i].type;
 
         if (attr_name == "batch_size") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT64);
-          parameters.batch_size = *static_cast<std::int64_t const *>(fields[i].data);
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.batch_size = *static_cast<std::int32_t const *>(fields[i].data);
         } else if (attr_name == "dimension") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT64);
-          parameters.dimension = *static_cast<std::int64_t const *>(fields[i].data);
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.dimension = *static_cast<std::int32_t const *>(fields[i].data);
         } else if (attr_name == "height") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT64);
-          parameters.height = *static_cast<std::int64_t const *>(fields[i].data);
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.height = *static_cast<std::int32_t const *>(fields[i].data);
         } else if (attr_name == "width") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT64);
-          parameters.width = *static_cast<std::int64_t const *>(fields[i].data);
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.width = *static_cast<std::int32_t const *>(fields[i].data);
         }
       }
 

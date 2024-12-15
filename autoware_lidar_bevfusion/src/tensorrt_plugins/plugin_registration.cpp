@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/tensorrt_plugins/get_indice_pairs_3d_forward_plugin_creator.hpp"
 #include "autoware/tensorrt_plugins/quick_cumsum_cuda_plugin_creator.hpp"
-#include "autoware/tensorrt_plugins/sparse_conv_plugin_creator.hpp"
-#include "autoware/tensorrt_plugins/subm_conv_plugin_creator.hpp"
+#include "autoware/tensorrt_plugins/get_indice_pairs_implicit_gemm_plugin_creator.hpp"
+#include "autoware/tensorrt_plugins/implicit_gemm_plugin_creator.hpp"
 
 #include <NvInferRuntime.h>
 
@@ -62,15 +61,14 @@ extern "C" void setLoggerFinder(nvinfer1::ILoggerFinder * finder)
 extern "C" nvinfer1::IPluginCreatorInterface * const * getPluginCreators(
   std::int32_t & num_creators)
 {
-  num_creators = 4;
+  num_creators = 3;
   static nvinfer1::plugin::QuickCumsumCudaPluginCreator quick_cumsum_cuda_plugin_creator{};
-  static nvinfer1::plugin::SparseConvPluginCreator sparse_conv_plugin_creator{};
-  static nvinfer1::plugin::SubMConvPluginCreator subm_conv_plugin_creator{};
-  static nvinfer1::plugin::GetIndicePairs3dForwardPluginCreator
-    get_indice_pairs3d_forward_plugin_creator{};
+  static nvinfer1::plugin::GetIndicePairsImplicitGemmPluginCreator get_indice_pairs_implicit_gemm_plugin_creator{};
+  static nvinfer1::plugin::ImplicitGemmPluginCreator implicit_gemm_plugin_creator{};
 
   static nvinfer1::IPluginCreatorInterface * const plugin_creator_list[] = {
-    &quick_cumsum_cuda_plugin_creator, &sparse_conv_plugin_creator, &subm_conv_plugin_creator,
-    &get_indice_pairs3d_forward_plugin_creator};
+    &quick_cumsum_cuda_plugin_creator, 
+    &get_indice_pairs_implicit_gemm_plugin_creator,
+    &implicit_gemm_plugin_creator};
   return plugin_creator_list;
 }

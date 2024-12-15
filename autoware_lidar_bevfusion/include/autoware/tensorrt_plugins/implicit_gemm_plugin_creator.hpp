@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_CREATOR_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_CREATOR_HPP_
+#ifndef AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_
+#define AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_
 
-#include "autoware/tensorrt_plugins/get_indice_pairs_3d_forward_plugin.hpp"
+#include "autoware/tensorrt_plugins/implicit_gemm_plugin.hpp"
 
 #include <NvInferRuntime.h>
 
@@ -27,26 +27,26 @@ namespace plugin
 {
 
 // Plugin factory class.
-class GetIndicePairs3dForwardPluginCreator : public nvinfer1::IPluginCreatorV3One
+class ImplicitGemmPluginCreator : public nvinfer1::IPluginCreatorV3One
 {
 public:
-  GetIndicePairs3dForwardPluginCreator();
+  ImplicitGemmPluginCreator();
 
-  ~GetIndicePairs3dForwardPluginCreator() override = default;
+  ~ImplicitGemmPluginCreator() override = default;
 
   char const * getPluginNamespace() const noexcept override
   {
-    return kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_NAMESPACE;
+    return kIMPLICIT_GEMM_PLUGIN_NAMESPACE;
   }
 
   char const * getPluginName() const noexcept override
   {
-    return kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_NAME;
+    return kIMPLICIT_GEMM_PLUGIN_NAME;
   }
 
   char const * getPluginVersion() const noexcept override
   {
-    return kGET_INDICE_PAIRS_3D_FORWARD_PLUGIN_VERSION;
+    return kIMPLICIT_GEMM_PLUGIN_VERSION;
   }
 
   nvinfer1::PluginFieldCollection const * getFieldNames() noexcept override;
@@ -62,4 +62,4 @@ private:
 }  // namespace plugin
 }  // namespace nvinfer1
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__GET_INDICE_PAIRS_3D_FORWARD_PLUGIN_CREATOR_HPP_
+#endif  // AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_CREATOR_HPP_

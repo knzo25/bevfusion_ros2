@@ -31,6 +31,8 @@
 #include "autoware/lidar_bevfusion/cuda_utils.hpp"
 #include "autoware/lidar_bevfusion/preprocess/preprocess_kernel.hpp"
 
+#include <spconvlib/spconv/csrc/sparse/all/ops3d/Point2Voxel.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -42,14 +44,12 @@ PreprocessCuda::PreprocessCuda(
   const BEVFusionConfig & config, cudaStream_t & stream, bool allocate_buffers)
 : stream_(stream), config_(config)
 {
-  mask_size_ = config_.grid_z_size_ * config_.grid_y_size_ * config_.grid_x_size_;
-  voxels_size_ = config_.grid_z_size_ * config_.grid_y_size_ * config_.grid_x_size_ * 5;
-
   if (allocate_buffers) {
-    mask_ = cuda::make_unique<unsigned int[]>(mask_size_);
-    voxels_ = cuda::make_unique<float[]>(voxels_size_);
-    num_voxels_ = cuda::make_unique<unsigned int[]>(1);
-    ;
+      std::int64_t max_points = static_cast<std::int64_t>(config.cloud_capacity_);
+      indices_padded_no_batch_ = tv::empty({static_cast<std::int64_t>(config_.max_voxels_), 3}, tv::int32, 0);
+      hash_key_value_ = tv::empty({max_points * 2}, tv::custom128, 0);
+      point_indice_data_ = tv::empty({max_points}, tv::int64, 0);
+      points_voxel_id_ = tv::empty({max_points}, tv::int64, 0);    
   }
 }
 
@@ -102,126 +102,107 @@ cudaError_t PreprocessCuda::generateSweepPoints_launch(
   return err;
 }
 
-__global__ void generateVoxels_random_kernel(
-  float * points, unsigned int points_size, float min_x_range, float max_x_range, float min_y_range,
-  float max_y_range, float min_z_range, float max_z_range, float voxel_x_size, float voxel_y_size,
-  float voxel_z_size, int grid_y_size, int grid_x_size, unsigned int * mask, float * voxels)
+
+__global__ void formatCoors_kernel(
+  std::int32_t * input_voxel_coords, std::int32_t * output_voxel_coords, unsigned int num_voxels)
 {
-  int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (point_idx >= points_size) return;
+  int voxel_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (voxel_idx >= num_voxels) return;
 
-  float x = points[point_idx * 5];
-  float y = points[point_idx * 5 + 1];
-  float z = points[point_idx * 5 + 2];
-  float i = points[point_idx * 5 + 3];
-  float t = points[point_idx * 5 + 4];
+  // the base code uses yxz. spconv uses zyx
+  std::int32_t voxel_coord_z = input_voxel_coords[3 * voxel_idx + 0];
+  std::int32_t voxel_coord_y = input_voxel_coords[3 * voxel_idx + 1];
+  std::int32_t voxel_coord_x = input_voxel_coords[3 * voxel_idx + 2];
 
-  if (
-    x <= min_x_range || x >= max_x_range || y <= min_y_range || y >= max_y_range ||
-    z <= min_z_range || z >= max_z_range)
-    return;
-
-  int voxel_idx = floorf((x - min_x_range) / voxel_x_size);
-  int voxel_idy = floorf((y - min_y_range) / voxel_y_size);
-  int voxel_idz = floorf((z - min_z_range) / voxel_z_size);
-  unsigned int voxel_index =
-    voxel_idz * grid_x_size * grid_y_size + voxel_idy * grid_x_size + voxel_idx;
-
-  unsigned int point_id = atomicAdd(&(mask[voxel_index]), 1);
-
-  float * address = voxels + 5 * voxel_index;
-
-  atomicAdd(address + 0, x);
-  atomicAdd(address + 1, y);
-  atomicAdd(address + 2, z);
-  atomicAdd(address + 3, i);
-  atomicAdd(address + 4, t);
+  output_voxel_coords[4 * voxel_idx + 0] = 0;
+  output_voxel_coords[4 * voxel_idx + 1] = voxel_coord_y;
+  output_voxel_coords[4 * voxel_idx + 2] = voxel_coord_x;
+  output_voxel_coords[4 * voxel_idx + 3] = voxel_coord_z;
 }
 
-cudaError_t PreprocessCuda::generateVoxels_random_launch(
-  float * points, unsigned int points_size, unsigned int * mask, float * voxels)
+cudaError_t PreprocessCuda::formatCoors_launch(
+  std::int32_t * input_voxel_coords, std::int32_t * output_voxel_coords, unsigned int num_voxels)
 {
-  if (points_size == 0) {
+  if (num_voxels == 0) {
     return cudaGetLastError();
   }
-  dim3 blocks(divup(points_size, 256));
+  dim3 blocks(divup(num_voxels, 256));
   dim3 threads(256);
 
-  generateVoxels_random_kernel<<<blocks, threads, 0, stream_>>>(
-    points, points_size, config_.min_x_range_, config_.max_x_range_, config_.min_y_range_,
-    config_.max_y_range_, config_.min_z_range_, config_.max_z_range_, config_.voxel_x_size_,
-    config_.voxel_y_size_, config_.voxel_z_size_, config_.grid_y_size_, config_.grid_x_size_, mask,
-    voxels);
+  formatCoors_kernel<<<blocks, threads, 0, stream_>>>(
+    input_voxel_coords, output_voxel_coords, num_voxels);
   cudaError_t err = cudaGetLastError();
   return err;
 }
 
-__global__ void generateBaseFeatures_kernel(
-  unsigned int * mask, float * voxels, int grid_z_size, int grid_y_size, int grid_x_size,
-  float max_voxels, float * voxel_features, std::int32_t * voxel_coords, unsigned int * voxel_num)
-{
-  unsigned int voxel_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  unsigned int voxel_idy = blockIdx.y * blockDim.y + threadIdx.y;
-  unsigned int voxel_idz = blockIdx.z * blockDim.z + threadIdx.z;
-
-  if (voxel_idx >= grid_x_size || voxel_idy >= grid_y_size || voxel_idz >= grid_z_size) return;
-
-  unsigned int input_voxel_index =
-    voxel_idz * grid_y_size * grid_x_size + voxel_idy * grid_x_size + voxel_idx;
-  unsigned int count = mask[input_voxel_index];
-  if (!(count > 0)) return;
-
-  // unsigned int current_pillarId = 0;
-  unsigned int output_voxel_index = atomicAdd(voxel_num, 1);
-
-  voxel_features[5 * output_voxel_index + 0] = voxels[5 * input_voxel_index + 0] / count;
-  voxel_features[5 * output_voxel_index + 1] = voxels[5 * input_voxel_index + 1] / count;
-  voxel_features[5 * output_voxel_index + 2] = voxels[5 * input_voxel_index + 2] / count;
-  voxel_features[5 * output_voxel_index + 3] = voxels[5 * input_voxel_index + 3] / count;
-  voxel_features[5 * output_voxel_index + 4] = voxels[5 * input_voxel_index + 4] / count;
-
-  voxel_coords[4 * output_voxel_index + 0] = 0;
-  voxel_coords[4 * output_voxel_index + 1] = voxel_idy;
-  voxel_coords[4 * output_voxel_index + 2] = voxel_idx;
-  voxel_coords[4 * output_voxel_index + 3] = voxel_idz;
-}
-
-// create 4 channels
-cudaError_t PreprocessCuda::generateBaseFeatures_launch(
-  unsigned int * mask, float * voxels, float * voxel_features, std::int32_t * voxel_coordinates,
-  unsigned int * voxel_num)
-{
-  dim3 threads = {16, 16, 4};
-  dim3 blocks = {
-    divup(config_.grid_x_size_, threads.x), divup(config_.grid_y_size_, threads.y),
-    divup(config_.grid_z_size_, threads.z)};
-
-  generateBaseFeatures_kernel<<<blocks, threads, 0, stream_>>>(
-    mask, voxels, config_.grid_z_size_, config_.grid_y_size_, config_.grid_x_size_,
-    config_.max_voxels_, voxel_features, voxel_coordinates, voxel_num);
-  cudaError_t err = cudaGetLastError();
-  return err;
-}
 
 std::size_t PreprocessCuda::generateVoxels(
-  float * points, unsigned int points_size, float * voxel_features, std::int32_t * voxel_coords)
+  const float * points, 
+  unsigned int points_size, 
+  float * voxel_features, 
+  std::int32_t * voxel_coords,
+  std::int32_t * num_points_per_voxel)
 {
-  cudaMemsetAsync(mask_.get(), 0, mask_size_ * sizeof(unsigned int), stream_);
-  cudaMemsetAsync(voxels_.get(), 0, voxels_size_ * sizeof(float), stream_);
-  cudaMemsetAsync(num_voxels_.get(), 0, 1 * sizeof(unsigned int), stream_);
+  using Point2VoxelGPU3D =
+    spconvlib::spconv::csrc::sparse::all::ops3d::Point2Voxel;
 
-  CHECK_CUDA_ERROR(generateVoxels_random_launch(points, points_size, mask_.get(), voxels_.get()));
+  int max_num_voxels = config_.max_voxels_;
+  int num_point_per_voxel = config_.points_per_voxel_;
+  std::array<float, 3> vsize_xyz{
+    config_.voxel_z_size_, 
+    config_.voxel_y_size_,
+    config_.voxel_x_size_
+  };
 
-  CHECK_CUDA_ERROR(generateBaseFeatures_launch(
-    mask_.get(), voxels_.get(), voxel_features, voxel_coords, num_voxels_.get()));
+  std::array<std::int32_t, 3> grid_size{
+    static_cast<int32_t>(config_.grid_z_size_), 
+    static_cast<int32_t>(config_.grid_y_size_),
+    static_cast<int32_t>(config_.grid_x_size_)
+  };
 
-  CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+  std::array<int64_t, 3> grid_stride{
+    static_cast<int64_t>(config_.grid_y_size_* config_.grid_x_size_) ,
+    static_cast<int64_t>(config_.grid_x_size_),
+    1
+  };
 
-  unsigned int num_voxels_host;
-  CHECK_CUDA_ERROR(
-    cudaMemcpy(&num_voxels_host, num_voxels_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost));
+  std::array<float, 6> coors_range{
+    config_.min_z_range_, 
+    config_.min_y_range_,
+    config_.min_x_range_,
+    config_.max_z_range_, 
+    config_.max_y_range_,
+    config_.max_x_range_
+  };
 
-  return static_cast<std::size_t>(num_voxels_host);
+  tv::Tensor pc =
+    tv::from_blob(points, 
+    {static_cast<int>(points_size), 5},
+    tv::float32, 0);
+
+  auto point_limit = pc.dim(0);
+
+  tv::Tensor voxels_padded = tv::from_blob(
+      voxel_features,
+      {max_num_voxels, num_point_per_voxel, pc.dim(1)}, tv::float32, 0);
+
+  tv::Tensor num_points_per_voxel_tensor = tv::from_blob(
+      num_points_per_voxel,
+      {static_cast<std::int64_t>(config_.max_voxels_)}, tv::int32, 0);
+  
+  auto p2v_res = Point2VoxelGPU3D::point_to_voxel_hash_static(
+      pc, voxels_padded, indices_padded_no_batch_, num_points_per_voxel_tensor,
+      hash_key_value_, point_indice_data_, points_voxel_id_, vsize_xyz,
+      grid_size,
+      grid_stride,
+      coors_range,
+      true, false, reinterpret_cast<std::uintptr_t>(stream_));
+
+  std::size_t real_num_voxels = static_cast<std::size_t>(std::get<0>(p2v_res).dim(0));
+  
+  CHECK_CUDA_ERROR(formatCoors_launch(indices_padded_no_batch_.data_ptr<std::int32_t>(), voxel_coords, real_num_voxels));   
+
+  return real_num_voxels;
 }
 
 __global__ void resize_and_extract_roi(

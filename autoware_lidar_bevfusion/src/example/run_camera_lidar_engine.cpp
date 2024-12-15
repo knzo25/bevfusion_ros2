@@ -20,6 +20,8 @@
 #include <opencv2/opencv.hpp>
 #include <unsupported/Eigen/CXX11/Tensor>
 
+#include <spconvlib/spconv/csrc/sparse/all/ops3d/Point2Voxel.h>
+
 #include <NvInfer.h>
 #include <memory.h>
 
@@ -85,16 +87,32 @@ std::vector<T> load_tensor(const std::string & file_name)
   return data;
 }
 
+class MyProfiler : public nvinfer1::IProfiler {
+public:
+  void reportLayerTime(const char* layerName, float ms) noexcept override {
+    if (std::string(layerName).find("ImplicitGemm") != std::string::npos)
+    {
+      //&& std::string(layerName).find("GetIndicePairs") == std::string::npos)
+      std::cout << "Layer: " << layerName << " took " << ms << " ms" << std::endl;
+      total_ms += ms;
+    }
+  }
+
+  float total_ms{0.f};
+};
+
+
 int main(int argc, char ** argv)
 {
   using autoware::lidar_bevfusion::Matrix4fRowM;
-  if (argc != 3) {
-    std::cerr << "Usage: " << argv[0] << " <plugin_library_path> <engine_file_path>" << std::endl;
+  if (argc != 4) {
+    std::cerr << "Usage: " << argv[0] << " <plugin_library_path> <engine_file_path> <camera_lidar_mode>" << std::endl;
     return EXIT_FAILURE;
   }
 
   std::string const plugin_library_path{argv[1]};
   std::string const engine_file_path{argv[2]};
+  bool const camera_lidar_mode = std::stoi(argv[3]);
 
   std::cout << "Plugin library path: " << plugin_library_path << std::endl;
   std::cout << "Engine file path: " << engine_file_path << std::endl;
@@ -146,10 +164,13 @@ int main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
-  std::cout << "Engine loaded successfully." << std::endl;
-  // std::this_thread::sleep_for(std::chrono::seconds(10));
+  MyProfiler profiler;
+  //context->setProfiler(&profiler);
 
+  std::cout << "Engine loaded successfully." << std::endl;
+  
   // Create the configuration
+  //const int max_points_per_voxel = 10;
   const std::size_t cloud_capacity = 2000000;  // floats, not points
   const std::vector<int64_t> voxels_num{1, 128000, 256000};
   const std::vector<double> point_cloud_range{-122.4f, -122.4f, -3.f, 122.4f, 122.4f, 5.f};
@@ -267,9 +288,11 @@ int main(int argc, char ** argv)
   }
 
   std::cout << "Loading points and calibration..." << std::endl;
-  std::vector<float> input_points_host = load_tensor<float>("points_test.txt");
-  std::vector<float> cam2image_flattened_vector = load_tensor<float>("cam2image_test.txt");
-  std::vector<float> camera2lidar_flattened_vector = load_tensor<float>("camera2lidar_test.txt");
+  std::vector<float> input_points_host = load_tensor<float>("points.txt");
+  std::vector<float> input_voxels_host = load_tensor<float>("feats.txt");
+  std::vector<std::int32_t> input_coors_host = load_tensor<std::int32_t>("coors.txt");
+  std::vector<float> cam2image_flattened_vector = load_tensor<float>("cam2image.txt");
+  std::vector<float> camera2lidar_flattened_vector = load_tensor<float>("camera2lidar.txt");
 
   std::vector<Matrix4fRowM> cam2image_vector;
   std::vector<Matrix4fRowM> img_aug_vector;
@@ -335,73 +358,67 @@ int main(int argc, char ** argv)
   float * points_device{};
   float * voxel_features_device{};
   std::int32_t * voxel_coords_device{};
+  std::int32_t * num_points_per_voxel_device{};
   cudaMalloc(reinterpret_cast<void **>(&points_device), input_points_host.size() * sizeof(float));
   cudaMemcpy(
     points_device, input_points_host.data(), input_points_host.size() * sizeof(float),
     cudaMemcpyHostToDevice);
-  cudaMalloc(reinterpret_cast<void **>(&voxel_features_device), 256000 * 5 * sizeof(float));
+  cudaMalloc(reinterpret_cast<void **>(&voxel_features_device), 256000 * 10 * 5 * sizeof(float));
   cudaMalloc(reinterpret_cast<void **>(&voxel_coords_device), 256000 * 4 * sizeof(std::int32_t));
+  cudaMalloc(reinterpret_cast<void **>(&num_points_per_voxel_device), 256000 * sizeof(std::int32_t));
 
-  std::size_t num_voxels = preprocessor.generateVoxels(
-    points_device, input_points_host.size() / 5, voxel_features_device, voxel_coords_device);
-
-  std::vector<float> voxel_features_host(num_voxels * 5);
-  std::vector<std::int32_t> voxel_coods_host(num_voxels * 4);
-
+  /* std::size_t num_voxels = input_voxels_host.size() / 5;
+  assert(num_voxels == input_coors_host.size() / 4);
   cudaMemcpy(
-    voxel_features_host.data(), voxel_features_device, num_voxels * 5 * sizeof(float),
-    cudaMemcpyDeviceToHost);
+    voxel_features_device, input_voxels_host.data(), num_voxels * 5 * sizeof(float),
+    cudaMemcpyHostToDevice);
   cudaMemcpy(
-    voxel_coods_host.data(), voxel_coords_device, num_voxels * 4 * sizeof(std::int32_t),
-    cudaMemcpyDeviceToHost);
+    voxel_coords_device, input_coors_host.data(), num_voxels * 4 * sizeof(std::int32_t),
+    cudaMemcpyHostToDevice); */
 
-  float min_voxel_feature_x = 1e6;
-  float min_voxel_feature_y = 1e6;
-  float min_voxel_feature_z = 1e6;
-  float max_voxel_feature_x = -1e6;
-  float max_voxel_feature_y = -1e6;
-  float max_voxel_feature_z = -1e6;
+  std::size_t num_voxels;
+  const int voxelization_iterations = 50;
+  float avg_voxelization_time_ms = 0.0f;
 
-  std::int32_t min_voxel_coord_b = 1e6;
-  std::int32_t min_voxel_coord_x = 1e6;
-  std::int32_t min_voxel_coord_y = 1e6;
-  std::int32_t min_voxel_coord_z = 1e6;
-  std::int32_t max_voxel_coord_b = -1e6;
-  std::int32_t max_voxel_coord_x = -1e6;
-  std::int32_t max_voxel_coord_y = -1e6;
-  std::int32_t max_voxel_coord_z = -1e6;
+  for (int iteration = 0; iteration < voxelization_iterations; iteration++) {
 
-  for (std::size_t voxel_id = 0; voxel_id < num_voxels; voxel_id++) {
-    min_voxel_feature_x = std::min(min_voxel_feature_x, voxel_features_host[voxel_id * 5 + 0]);
-    min_voxel_feature_y = std::min(min_voxel_feature_y, voxel_features_host[voxel_id * 5 + 1]);
-    min_voxel_feature_z = std::min(min_voxel_feature_z, voxel_features_host[voxel_id * 5 + 2]);
-    max_voxel_feature_x = std::max(max_voxel_feature_x, voxel_features_host[voxel_id * 5 + 0]);
-    max_voxel_feature_y = std::max(max_voxel_feature_y, voxel_features_host[voxel_id * 5 + 1]);
-    max_voxel_feature_z = std::max(max_voxel_feature_z, voxel_features_host[voxel_id * 5 + 2]);
+    auto t0 = std::chrono::high_resolution_clock::now();
+    num_voxels = preprocessor.generateVoxels(
+      points_device, input_points_host.size() / 5, 
+      voxel_features_device, 
+      voxel_coords_device,
+      num_points_per_voxel_device);
 
-    min_voxel_coord_b = std::min(min_voxel_coord_b, voxel_coods_host[voxel_id * 4 + 0]);
-    min_voxel_coord_x = std::min(min_voxel_coord_x, voxel_coods_host[voxel_id * 4 + 1]);
-    min_voxel_coord_y = std::min(min_voxel_coord_y, voxel_coods_host[voxel_id * 4 + 2]);
-    min_voxel_coord_z = std::min(min_voxel_coord_z, voxel_coods_host[voxel_id * 4 + 3]);
-    max_voxel_coord_b = std::max(max_voxel_coord_b, voxel_coods_host[voxel_id * 4 + 0]);
-    max_voxel_coord_x = std::max(max_voxel_coord_x, voxel_coods_host[voxel_id * 4 + 1]);
-    max_voxel_coord_y = std::max(max_voxel_coord_y, voxel_coods_host[voxel_id * 4 + 2]);
-    max_voxel_coord_z = std::max(max_voxel_coord_z, voxel_coods_host[voxel_id * 4 + 3]);
+    cudaStreamSynchronize(stream);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto voxelization_time_ms = 0.001f * std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    avg_voxelization_time_ms += iteration > 0 ? voxelization_time_ms : 0.f;
+
+    std::cout << "Voxelization took "
+              << voxelization_time_ms << " ms"
+              << std::endl;
   }
+
+  std::cout << "Average voxelization time: " << avg_voxelization_time_ms / (voxelization_iterations-1) << " ms" << std::endl;
 
   std::cout << "num_voxels: " << num_voxels << std::endl;
 
   std::cout << "Preparing input tensors..." << std::endl;
 
   nvinfer1::Dims input_voxels_shape;
-  input_voxels_shape.nbDims = 2;
+  input_voxels_shape.nbDims = 3;
   input_voxels_shape.d[0] = num_voxels;
-  input_voxels_shape.d[1] = 5;
+  input_voxels_shape.d[1] = 10;
+  input_voxels_shape.d[2] = 5;
 
   nvinfer1::Dims input_coors_shape;
   input_coors_shape.nbDims = 2;
   input_coors_shape.d[0] = num_voxels;
   input_coors_shape.d[1] = 4;
+
+  nvinfer1::Dims input_num_points_per_voxel_shape;
+  input_num_points_per_voxel_shape.nbDims = 1;
+  input_num_points_per_voxel_shape.d[0] = num_voxels;
 
   nvinfer1::Dims input_imgs_shape;
   input_imgs_shape.nbDims = 4;
@@ -498,6 +515,7 @@ int main(int argc, char ** argv)
 
   input_shapes_map["voxels"] = input_voxels_shape;
   input_shapes_map["coors"] = input_coors_shape;
+  input_shapes_map["num_points_per_voxel"] = input_num_points_per_voxel_shape;
   input_shapes_map["imgs"] = input_imgs_shape;
   input_shapes_map["lidar2image"] = input_lidar2image_shape;
   input_shapes_map["geom_feats"] = input_geom_feats_shape;
@@ -508,6 +526,7 @@ int main(int argc, char ** argv)
   CHECK_CUDA_ERROR(
     cudaMalloc(&input_tensor_device_buffers_map["voxels"], input_sizes_map["voxels"]));
   CHECK_CUDA_ERROR(cudaMalloc(&input_tensor_device_buffers_map["coors"], input_sizes_map["coors"]));
+  CHECK_CUDA_ERROR(cudaMalloc(&input_tensor_device_buffers_map["num_points_per_voxel"], input_sizes_map["num_points_per_voxel"]));
   CHECK_CUDA_ERROR(cudaMalloc(&input_tensor_device_buffers_map["imgs"], input_sizes_map["imgs"]));
   CHECK_CUDA_ERROR(
     cudaMalloc(&input_tensor_device_buffers_map["lidar2image"], input_sizes_map["lidar2image"]));
@@ -539,7 +558,7 @@ int main(int argc, char ** argv)
   output_shapes_map["bbox_pred"] = output_bbox_pred_shape;
   output_shapes_map["score"] = output_score_shape;
   output_shapes_map["label_pred"] = output_label_pred_shape;
-
+  
   CHECK_CUDA_ERROR(
     cudaMalloc(&output_tensor_device_buffers_map["bbox_pred"], output_sizes_map["bbox_pred"]));
   CHECK_CUDA_ERROR(
@@ -572,6 +591,7 @@ int main(int argc, char ** argv)
   // These were aready in gpu
   input_tensor_device_buffers_map["voxels"] = voxel_features_device;
   input_tensor_device_buffers_map["coors"] = voxel_coords_device;
+  input_tensor_device_buffers_map["num_points_per_voxel"] = num_points_per_voxel_device;
   input_tensor_device_buffers_map["imgs"] = processed_images_tensor_device;
 
   // Check the number of IO tensors.
@@ -602,41 +622,58 @@ int main(int argc, char ** argv)
   // Inputs
   context->setTensorAddress("voxels", input_tensor_device_buffers_map["voxels"]);
   context->setTensorAddress("coors", input_tensor_device_buffers_map["coors"]);
-  context->setTensorAddress("imgs", input_tensor_device_buffers_map["imgs"]);
-  context->setTensorAddress("lidar2image", input_tensor_device_buffers_map["lidar2image"]);
-  context->setTensorAddress("geom_feats", input_tensor_device_buffers_map["geom_feats"]);
-  context->setTensorAddress("kept", input_tensor_device_buffers_map["kept"]);
-  context->setTensorAddress("ranks", input_tensor_device_buffers_map["ranks"]);
-  context->setTensorAddress("indices", input_tensor_device_buffers_map["indices"]);
+  context->setTensorAddress("num_points_per_voxel", input_tensor_device_buffers_map["num_points_per_voxel"]);
 
   context->setInputShape("voxels", input_shapes_map["voxels"]);
   context->setInputShape("coors", input_shapes_map["coors"]);
-  context->setInputShape("imgs", input_shapes_map["imgs"]);
-  context->setInputShape("lidar2image", input_shapes_map["lidar2image"]);
-  context->setInputShape("geom_feats", input_shapes_map["geom_feats"]);
-  context->setInputShape("kept", input_shapes_map["kept"]);
-  context->setInputShape("ranks", input_shapes_map["ranks"]);
-  context->setInputShape("indices", input_shapes_map["indices"]);
+  context->setInputShape("num_points_per_voxel", input_shapes_map["num_points_per_voxel"]);
 
+  if (camera_lidar_mode) {
+    context->setTensorAddress("imgs", input_tensor_device_buffers_map["imgs"]);
+    context->setTensorAddress("lidar2image", input_tensor_device_buffers_map["lidar2image"]);
+    context->setTensorAddress("geom_feats", input_tensor_device_buffers_map["geom_feats"]);
+    context->setTensorAddress("kept", input_tensor_device_buffers_map["kept"]);
+    context->setTensorAddress("ranks", input_tensor_device_buffers_map["ranks"]);
+    context->setTensorAddress("indices", input_tensor_device_buffers_map["indices"]);
+
+    context->setInputShape("imgs", input_shapes_map["imgs"]);
+    context->setInputShape("lidar2image", input_shapes_map["lidar2image"]);
+    context->setInputShape("geom_feats", input_shapes_map["geom_feats"]);
+    context->setInputShape("kept", input_shapes_map["kept"]);
+    context->setInputShape("ranks", input_shapes_map["ranks"]);
+    context->setInputShape("indices", input_shapes_map["indices"]);
+  }
   // Outputs
   context->setTensorAddress("bbox_pred", output_tensor_device_buffers_map["bbox_pred"]);
   context->setTensorAddress("score", output_tensor_device_buffers_map["score"]);
   context->setTensorAddress("label_pred", output_tensor_device_buffers_map["label_pred"]);
-
+  
   std::cout << "Running inference..." << std::endl;
 
+  const int inference_iterations = 50;
+  float avg_inference_time_ms = 0.0f;
+
   // Run inference a couple of times.
-  std::size_t const num_iterations{1};
-  for (std::size_t i{0U}; i < num_iterations; ++i) {
+  for (std::size_t i{0U}; i < inference_iterations; ++i) {
+    profiler.total_ms = 0.f;
+    auto t0 = std::chrono::high_resolution_clock::now();
     bool const status{context->enqueueV3(stream)};
     if (!status) {
       std::cerr << "Failed to run inference." << std::endl;
       return EXIT_FAILURE;
     }
+
+    // Synchronize.
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    avg_inference_time_ms += i > 0 ? dt_ms : 0.f;
+    std::cout << "Inference time: " << dt_ms << " ms" << std::endl;
+    std::cout << "Sparse convolution time: " << profiler.total_ms << " ms" << std::endl;
   }
 
-  // Synchronize.
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+  std::cout << "Average inference time: " << avg_inference_time_ms / (inference_iterations-1) << " ms" << std::endl;
 
   std::cout << "Copying data to host..." << std::endl;
 
@@ -654,7 +691,7 @@ int main(int argc, char ** argv)
   [[maybe_unused]] auto output_bbox_pred_real_shape = context->getTensorShape("bbox_pred");
   [[maybe_unused]] auto output_score_real_shape = context->getTensorShape("score");
   [[maybe_unused]] auto output_label_pred_real_shape = context->getTensorShape("label_pred");
-
+  
   memcpy(
     output_bbox_pred_host.data(), output_tensor_host_buffers_map["bbox_pred"],
     output_sizes_map["bbox_pred"]);

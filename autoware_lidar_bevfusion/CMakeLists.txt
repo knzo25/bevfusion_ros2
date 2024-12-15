@@ -79,15 +79,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
 
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} "-g -G")
-    set(CUDA_NVCC_FLAGS "-g -G")
   endif()
-
-  # Start MMCV_SPConv
-  # Temporary depdendency on torch
-  list(APPEND CMAKE_PREFIX_PATH "/usr/local/lib/python3.10/dist-packages/torch/share/cmake/")
-
-  find_package(Torch REQUIRED)
-  list(FILTER TORCH_LIBRARIES EXCLUDE REGEX ".*LIBRARY-NOTFOUND.*")
 
   # Find Eigen3
   find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -95,26 +87,14 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   # Find OpenCV
   find_package(OpenCV REQUIRED)
 
-  #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+  # Find spconv
+  find_package(spconv REQUIRED)
 
-  add_definitions("-DMMCV_WITH_CUDA")
+  add_definitions("-DTV_CUDA")
 
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D__CUDA_NO_HALF_OPERATORS__") #  -G -g --generate-line-info
 
-  list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr -diag-suppress 1675")
-
-
-  cuda_add_library(mmcv_spconv SHARED
-      src/mmcv_spconv/cuda/spconv_ops_cuda.cu
-      src/mmcv_spconv/cuda/sparse_reordering.cu
-      src/mmcv_spconv/cuda/sparse_indice.cu
-      src/mmcv_spconv/cuda/cudabind.cpp
-      src/mmcv_spconv/cpu/sparse_indice.cpp
-      src/mmcv_spconv/cpu/sparse_reordering.cpp
-      src/mmcv_spconv/spconv_ops.cpp
-  )
-
-  target_link_libraries(mmcv_spconv "${TORCH_LIBRARIES}")
+  list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr -diag-suppress 1675 --extended-lambda")
 
   cuda_add_library(bev_ops SHARED
       src/bev_ops/bev_pool_cuda.cu
@@ -129,28 +109,31 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     src/tensorrt_plugins/plugin_utils.cpp
     src/tensorrt_plugins/quick_cumsum_cuda_plugin.cpp
     src/tensorrt_plugins/quick_cumsum_cuda_plugin_creator.cpp
-    src/tensorrt_plugins/indice_conv_plugin.cpp
-    src/tensorrt_plugins/sparse_conv_plugin.cpp
-    src/tensorrt_plugins/subm_conv_plugin.cpp
-    src/tensorrt_plugins/sparse_conv_plugin_creator.cpp
-    src/tensorrt_plugins/subm_conv_plugin_creator.cpp
-    src/tensorrt_plugins/get_indice_pairs_3d_forward_plugin.cpp
-    src/tensorrt_plugins/get_indice_pairs_3d_forward_plugin_creator.cpp
+    src/tensorrt_plugins/get_indice_pairs_implicit_gemm_plugin_creator.cpp
+    src/tensorrt_plugins/get_indice_pairs_implicit_gemm_plugin.cpp
+    src/tensorrt_plugins/implicit_gemm_plugin_creator.cpp
+    src/tensorrt_plugins/implicit_gemm_plugin.cpp
+
     src/tensorrt_plugins/plugin_registration.cpp
   )
+
+  target_compile_definitions(autoware_tensorrt_plugins PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
 
   target_link_libraries(autoware_tensorrt_plugins PRIVATE
       ${NVINFER}
       CUDA::cudart
-      ${TORCH_LIBRARIES}
-      mmcv_spconv
       bev_ops
+      spconv::spconv
   )
 
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     lib/postprocess/circle_nms_kernel.cu
     lib/postprocess/postprocess_kernel.cu
     lib/preprocess/preprocess_kernel.cu
+  )
+
+  target_link_libraries(${PROJECT_NAME}_cuda_lib
+    spconv::spconv
   )
 
   ament_auto_add_library(${PROJECT_NAME}_lib SHARED
@@ -186,7 +169,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     $(autoware_point_types_INCLUDE_DIRS)
   )
 
-
   add_executable(build_camera_lidar_engine
     src/example/build_camera_lidar_engine.cpp
   )
@@ -198,11 +180,14 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${CUDA_curand_LIBRARY}
     ${CUDNN_LIBRARY}
+    spconv::spconv
   )
 
   add_executable(run_camera_lidar_engine
     src/example/run_camera_lidar_engine.cpp
   )
+
+  target_compile_definitions(run_camera_lidar_engine PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
 
   target_link_libraries(run_camera_lidar_engine PRIVATE
     ${NVINFER}
@@ -211,6 +196,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${OpenCV_LIBRARIES}
     ${PROJECT_NAME}_cuda_lib
     ${PROJECT_NAME}_lib
+    spconv::spconv
   )
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED

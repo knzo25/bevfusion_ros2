@@ -41,23 +41,22 @@ struct InferDeleter
 
 int main(int argc, char ** argv)
 {
-  if (argc != 4) {
+  if (argc != 5) {
     std::cerr << "Usage: " << argv[0]
-              << " <onnx_file_path> <plugin_library_path> <engine_file_path>" << std::endl;
+              << " <onnx_file_path> <plugin_library_path> <engine_file_path> <camera_lidar_mode>" << std::endl;
     return EXIT_FAILURE;
   }
 
   std::string const onnx_file_path{argv[1]};
   std::string const plugin_library_path{argv[2]};
   std::string const engine_file_path{argv[3]};
+  bool const camera_lidar_mode = std::stoi(argv[4]);
 
   std::cout << "ONNX file path: " << onnx_file_path << std::endl;
   std::cout << "Plugin library path: " << plugin_library_path << std::endl;
   std::cout << "Engine file path: " << engine_file_path << std::endl;
 
   CustomLogger logger{};
-
-  // char const* const plugin_library_path_c_str{plugin_library_path.c_str()};
 
   // Create the builder.
   std::unique_ptr<nvinfer1::IBuilder, InferDeleter> builder{nvinfer1::createInferBuilder(logger)};
@@ -69,60 +68,67 @@ int main(int argc, char ** argv)
 
   auto profile = builder->createOptimizationProfile();
 
-  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{1, 5});
-  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{128000, 5});
-  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{256000, 5});
+  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims3{1, 10, 5});
+  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims3{128000, 10, 5});
+  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims3{256000, 10, 5});
 
   profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{1, 4});
   profile->setDimensions("coors", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{128000, 4});
   profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{256000, 4});
 
-  profile->setDimensions(
-    "imgs", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 3, 256, 704});
-  profile->setDimensions(
-    "imgs", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{6, 3, 256, 704});
-  profile->setDimensions(
-    "imgs", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{6, 3, 256, 704});
+  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims{1, {1}});
+  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims{1, {128000}});
+  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims{1, {256000}});
 
-  profile->setDimensions(
-    "lidar2image", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims3{1, 4, 4});
-  profile->setDimensions(
-    "lidar2image", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims3{6, 4, 4});
-  profile->setDimensions(
-    "lidar2image", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims3{6, 4, 4});
+  if (camera_lidar_mode) {
 
-  nvinfer1::Dims kept_min_dims, kept_max_dims;
-  kept_min_dims.nbDims = 1;
-  kept_min_dims.d[0] = 0 * 118 * 32 * 88;
-  kept_max_dims.nbDims = 1;
-  kept_max_dims.d[0] = 6 * 118 * 32 * 88;
+    profile->setDimensions(
+      "imgs", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 3, 256, 704});
+    profile->setDimensions(
+      "imgs", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{6, 3, 256, 704});
+    profile->setDimensions(
+      "imgs", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{6, 3, 256, 704});
 
-  nvinfer1::Dims geom_feats_min_dims, geom_feats_opt_dims, geom_feats_max_dims;
-  geom_feats_min_dims.nbDims = 1;
-  geom_feats_min_dims.d[0] = 0 * 118 * 32 * 88;
-  geom_feats_opt_dims.nbDims = 1;
-  geom_feats_opt_dims.d[0] = 6 * 118 * 32 * 88 / 2;
-  geom_feats_max_dims.nbDims = 1;
-  geom_feats_max_dims.d[0] = 6 * 118 * 32 * 88;
+    profile->setDimensions(
+      "lidar2image", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims3{1, 4, 4});
+    profile->setDimensions(
+      "lidar2image", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims3{6, 4, 4});
+    profile->setDimensions(
+      "lidar2image", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims3{6, 4, 4});
 
-  profile->setDimensions(
-    "geom_feats", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{geom_feats_min_dims.d[0], 4});
-  profile->setDimensions(
-    "geom_feats", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{geom_feats_opt_dims.d[0], 4});
-  profile->setDimensions(
-    "geom_feats", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{geom_feats_max_dims.d[0], 4});
+    nvinfer1::Dims kept_min_dims, kept_max_dims;
+    kept_min_dims.nbDims = 1;
+    kept_min_dims.d[0] = 0 * 118 * 32 * 88;
+    kept_max_dims.nbDims = 1;
+    kept_max_dims.d[0] = 6 * 118 * 32 * 88;
 
-  profile->setDimensions("kept", nvinfer1::OptProfileSelector::kMIN, kept_min_dims);
-  profile->setDimensions("kept", nvinfer1::OptProfileSelector::kOPT, kept_max_dims);
-  profile->setDimensions("kept", nvinfer1::OptProfileSelector::kMAX, kept_max_dims);
+    nvinfer1::Dims geom_feats_min_dims, geom_feats_opt_dims, geom_feats_max_dims;
+    geom_feats_min_dims.nbDims = 1;
+    geom_feats_min_dims.d[0] = 0 * 118 * 32 * 88;
+    geom_feats_opt_dims.nbDims = 1;
+    geom_feats_opt_dims.d[0] = 6 * 118 * 32 * 88 / 2;
+    geom_feats_max_dims.nbDims = 1;
+    geom_feats_max_dims.d[0] = 6 * 118 * 32 * 88;
 
-  profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kMIN, geom_feats_min_dims);
-  profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kOPT, geom_feats_opt_dims);
-  profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kMAX, geom_feats_max_dims);
+    profile->setDimensions(
+      "geom_feats", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{geom_feats_min_dims.d[0], 4});
+    profile->setDimensions(
+      "geom_feats", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{geom_feats_opt_dims.d[0], 4});
+    profile->setDimensions(
+      "geom_feats", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{geom_feats_max_dims.d[0], 4});
 
-  profile->setDimensions("indices", nvinfer1::OptProfileSelector::kMIN, geom_feats_min_dims);
-  profile->setDimensions("indices", nvinfer1::OptProfileSelector::kOPT, geom_feats_opt_dims);
-  profile->setDimensions("indices", nvinfer1::OptProfileSelector::kMAX, geom_feats_max_dims);
+    profile->setDimensions("kept", nvinfer1::OptProfileSelector::kMIN, kept_min_dims);
+    profile->setDimensions("kept", nvinfer1::OptProfileSelector::kOPT, kept_max_dims);
+    profile->setDimensions("kept", nvinfer1::OptProfileSelector::kMAX, kept_max_dims);
+
+    profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kMIN, geom_feats_min_dims);
+    profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kOPT, geom_feats_opt_dims);
+    profile->setDimensions("ranks", nvinfer1::OptProfileSelector::kMAX, geom_feats_max_dims);
+
+    profile->setDimensions("indices", nvinfer1::OptProfileSelector::kMIN, geom_feats_min_dims);
+    profile->setDimensions("indices", nvinfer1::OptProfileSelector::kOPT, geom_feats_opt_dims);
+    profile->setDimensions("indices", nvinfer1::OptProfileSelector::kMAX, geom_feats_max_dims);
+  }
 
   void * const plugin_handle{builder->getPluginRegistry().loadLibrary(plugin_library_path.c_str())};
   if (plugin_handle == nullptr) {
@@ -155,6 +161,8 @@ int main(int argc, char ** argv)
   }
   parser->parseFromFile(
     onnx_file_path.c_str(), static_cast<std::int32_t>(nvinfer1::ILogger::Severity::kWARNING));
+
+  std::cout << "Number of errors: " << parser->getNbErrors() << std::endl;
   for (std::int32_t i = 0; i < parser->getNbErrors(); ++i) {
     std::cout << parser->getError(i)->desc() << std::endl;
   }
@@ -162,6 +170,13 @@ int main(int argc, char ** argv)
   // Set the allowed IO tensor formats.
   std::uint32_t const formats{1U << static_cast<std::uint32_t>(nvinfer1::TensorFormat::kLINEAR)};
   nvinfer1::DataType const dtype{nvinfer1::DataType::kFLOAT};
+
+  auto nb_inputs = network->getNbInputs();
+  auto nb_outputs = network->getNbOutputs();
+
+  std::cout << "Number of inputs: " << nb_inputs << std::endl;
+  std::cout << "Number of outputs: " << nb_outputs << std::endl;
+
   network->getInput(0)->setAllowedFormats(formats);
   network->getInput(0)->setType(dtype);
   network->getOutput(0)->setAllowedFormats(formats);

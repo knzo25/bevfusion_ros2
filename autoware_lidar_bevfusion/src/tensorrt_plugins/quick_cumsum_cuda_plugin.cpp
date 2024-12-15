@@ -20,6 +20,7 @@
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
 
+#include <algorithm> // NOTE(knzo25): temporary
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -42,10 +43,10 @@ QuickCumsumCudaPlugin::QuickCumsumCudaPlugin(
 void QuickCumsumCudaPlugin::initFieldsToSerialize()
 {
   data_to_serialize_.clear();
-  data_to_serialize_.emplace_back("batch_size", &params_.batch_size, PluginFieldType::kINT64, 1);
-  data_to_serialize_.emplace_back("dimension", &params_.dimension, PluginFieldType::kINT64, 1);
-  data_to_serialize_.emplace_back("height", &params_.height, PluginFieldType::kINT64, 1);
-  data_to_serialize_.emplace_back("width", &params_.width, PluginFieldType::kINT64, 1);
+  data_to_serialize_.emplace_back("batch_size", &params_.batch_size, PluginFieldType::kINT32, 1);
+  data_to_serialize_.emplace_back("dimension", &params_.dimension, PluginFieldType::kINT32, 1);
+  data_to_serialize_.emplace_back("height", &params_.height, PluginFieldType::kINT32, 1);
+  data_to_serialize_.emplace_back("width", &params_.width, PluginFieldType::kINT32, 1);
 
   fc_to_serialize_.nbFields = data_to_serialize_.size();
   fc_to_serialize_.fields = data_to_serialize_.data();
@@ -204,7 +205,6 @@ std::int32_t QuickCumsumCudaPlugin::enqueue(
       sizeof(float),
     stream);
 
-  // TODO(knzo25): add the stream to the kernel
   bev_pool(
     static_cast<std::int32_t>(params_.batch_size), static_cast<std::int32_t>(params_.dimension),
     static_cast<std::int32_t>(params_.height), static_cast<std::int32_t>(params_.width),

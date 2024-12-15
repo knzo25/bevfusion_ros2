@@ -36,10 +36,10 @@ namespace plugin
 
 struct QuickCumsumCudaParameters
 {
-  std::int64_t batch_size;
-  std::int64_t dimension;
-  std::int64_t height;
-  std::int64_t width;
+  std::int32_t batch_size;
+  std::int32_t dimension;
+  std::int32_t height;
+  std::int32_t width;
 };
 
 class QuickCumsumCudaPlugin : public IPluginV3,
