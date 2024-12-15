@@ -31,7 +31,7 @@ ros2 launch autoware_lidar_bevfusion lidar_bevfusion.launch.xml model_path:=/wor
 We provide some scripts to test and benchmark the inference of BEVFusion
 
 ```bash
-./build/autoware_lidar_bevfusion/build_camera_lidar_engine",
+./build/autoware_lidar_bevfusion/build_camera_lidar_engine \
     /workspace/autoware/src/autoware_lidar_bevfusion/config/bevfusion_traveller59.onnx \
     /workspace/autoware/build/autoware_lidar_bevfusion/libautoware_tensorrt_plugins.so \
     /workspace/autoware/bevfusion_traveller59.engine 0
