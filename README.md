@@ -16,7 +16,7 @@ docker run --net host --gpus all -v $(pwd)/autoware_lidar_bevfusion:/workspace/a
 ```
 source /opt/ros/humble/setup.bash 
 cd autoware
-colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error --packages-up-to autoware_lidar_bevfusion --event-handlers console_direct+ --cmake-args -DCMAKE_VERBOSE_MAKEFILE=ON
+colcon build --symlink-install --continue-on-error --packages-up-to autoware_lidar_bevfusion --event-handlers console_direct+ --cmake-args -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=Release
 ```
 
 # Launch the node
@@ -48,12 +48,19 @@ We provide some scripts to test and benchmark the inference of BEVFusion
     bevfusion_cl_traveller59.engine 1
 ```
 
-| Modailty | GPU     | Backend  | Precision | Time [ms] |
-|----------|---------|----------|-----------|-----------|
-| L        | RTX3060 | Pytorch  | fp32      | 412.3     |
-| CL       | RTX3060 | Pytorch  | fp32      | 4103.3    |
-| L        | RTX3060 | TensorRT | fp32      | 56.1      |
-| CL       | RTX3060 | TensorRT | fp32      | 132.5     |
+| Modailty | GPU     | Backend  | Precision | #Voxels | Time [ms] |
+|----------|---------|----------|-----------|---------|-----------|
+| L        | RTX3060 | Pytorch  | fp32      | 68k     | 412.3     |
+| CL       | RTX3060 | Pytorch  | fp32      | 68k     | 4103.3    |
+| L        | RTX3060 | TensorRT | fp32      | 68k     | 56.1      |
+| CL       | RTX3060 | TensorRT | fp32      | 68k     | 132.5     |
+| L        | RTX3090 | TensorRT | fp32      | 68k     | 25.6      |
+| CL       | RTX3090 | TensorRT | fp32      | 68k     | 56.0      |
+
+Memory usage (including preprocessing buffers):
+ - L: 1428MB
+ - CL: 3072MB
+
 
 # Notes
 
