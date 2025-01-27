@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
 
-#include <algorithm> // NOTE(knzo25): temporary
+#include <algorithm>  // NOTE(knzo25): temporary
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>

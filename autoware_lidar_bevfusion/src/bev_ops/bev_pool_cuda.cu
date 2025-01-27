@@ -1,3 +1,7 @@
+// Taken from
+// https://github.com/mit-han-lab/bevfusion/blob/main/mmdet3d/ops/bev_pool/src/bev_pool_cuda.cu
+// Available under Apache-2.0 license
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -37,10 +41,6 @@ __global__ void bev_pool_kernel(
   for (int i = 0; i < interval_length; i++) {
     psum += cur_x[i * c];
   }
-
-  /* int out_index = cur_geom_feats[3] * d * h * w * c +
-    cur_geom_feats[2] * h * w * c + cur_geom_feats[0] * w * c +
-    cur_geom_feats[1] * c + cur_c; */
 
   *cur_out = psum;
 }

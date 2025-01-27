@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,10 @@ Written by Shaoshuai Shi
 All Rights Reserved 2019-2020.
 */
 
-#include "autoware/lidar_bevfusion/cuda_utils.hpp"
 #include "autoware/lidar_bevfusion/postprocess/circle_nms_kernel.hpp"
 #include "autoware/lidar_bevfusion/utils.hpp"
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
 
 #include <thrust/host_vector.h>
 
@@ -44,8 +45,8 @@ __device__ inline float dist2dPow(const Box3D * a, const Box3D * b)
 
 // cspell: ignore divup
 __global__ void circleNMS_Kernel(
-  const Box3D * boxes, const std::size_t num_boxes3d, const std::size_t col_blocks,
-  const float dist2d_pow_threshold, std::uint64_t * mask)
+  const Box3D * __restrict__ boxes, const std::size_t num_boxes3d, const std::size_t col_blocks,
+  const float dist2d_pow_threshold, std::uint64_t * __restrict__ mask)
 {
   // params: boxes (N,)
   // params: mask (N, divup(N/THREADS_PER_BLOCK_NMS))

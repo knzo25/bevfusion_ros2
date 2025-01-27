@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,11 +16,9 @@
 #define AUTOWARE__TENSORRT_PLUGINS__PLUGIN_UTILS_HPP_
 
 #include <NvInferRuntime.h>
-//#include <torch/torch.h>
 
 #include <cstdint>
-#include <cstring>
-#include <sstream>
+#include <stdexcept>
 
 void caughtError(std::exception const & e);
 
@@ -33,9 +31,5 @@ void reportAssertion(bool success, char const * msg, char const * file, std::int
 
 #define PLUGIN_VALIDATE(val) reportValidation((val), #val, __FILE__, __LINE__)
 void reportValidation(bool success, char const * msg, char const * file, std::int32_t line);
-/* 
-torch::Tensor toTensor(nvinfer1::PluginTensorDesc desc, void * data);
-
-torch::Tensor toConstTensor(nvinfer1::PluginTensorDesc desc, void const * data); */
 
 #endif  // AUTOWARE__TENSORRT_PLUGINS__PLUGIN_UTILS_HPP_

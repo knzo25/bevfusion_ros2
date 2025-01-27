@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,11 +69,14 @@ private:
   float score_threshold_{0.0};
   std::vector<std::string> class_names_;
   std::optional<std::string> lidar_frame_;
+  float max_camera_lidar_delay_;
 
   std::vector<sensor_msgs::msg::Image::ConstSharedPtr> image_msgs_;
+  std::vector<float> camera_masks_;
   std::vector<std::optional<sensor_msgs::msg::CameraInfo>> camera_info_msgs_;
   std::vector<std::optional<Matrix4f>> lidar2camera_extrinsics_;
 
+  bool sensor_fusion_{false};
   bool images_available_{false};
   bool intrinsics_available_{false};
   bool extrinsics_available_{false};

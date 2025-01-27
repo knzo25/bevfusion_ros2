@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,15 +15,15 @@
 #ifndef AUTOWARE__LIDAR_BEVFUSION__PREPROCESS__POINTCLOUD_DENSIFICATION_HPP_
 #define AUTOWARE__LIDAR_BEVFUSION__PREPROCESS__POINTCLOUD_DENSIFICATION_HPP_
 
-#include "autoware/lidar_bevfusion/cuda_utils.hpp"
+#include "autoware/lidar_bevfusion/preprocess/point_type.hpp"
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware/cuda_utils/cuda_unique_ptr.hpp>
+
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
-#else
-#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
-#endif
 
 #include <cstddef>
 #include <list>
@@ -32,6 +32,8 @@
 
 namespace autoware::lidar_bevfusion
 {
+
+using autoware::cuda_utils::CudaUniquePtr;
 
 class DensificationParam
 {
@@ -52,7 +54,7 @@ private:
 
 struct PointCloudWithTransform
 {
-  cuda::unique_ptr<uint8_t[]> data_d{nullptr};
+  CudaUniquePtr<InputPointType[]> data_d{nullptr};
   std_msgs::msg::Header header;
   std::size_t num_points{0};
   Eigen::Affine3f affine_past2world;

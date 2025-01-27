@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ namespace autoware::lidar_bevfusion
 {
 using autoware_perception_msgs::msg::DetectedObject;
 
+// TODO(knzo25): Update this implementation to mach changes from centerpoint
 enum class NMS_TYPE {
   IoU_BEV
   // IoU_3D

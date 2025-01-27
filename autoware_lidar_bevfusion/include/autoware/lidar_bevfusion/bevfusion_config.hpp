@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
 #ifndef AUTOWARE__LIDAR_BEVFUSION__BEVFUSION_CONFIG_HPP_
 #define AUTOWARE__LIDAR_BEVFUSION__BEVFUSION_CONFIG_HPP_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace autoware::lidar_bevfusion
@@ -25,53 +27,49 @@ namespace autoware::lidar_bevfusion
 class BEVFusionConfig
 {
 public:
+  // cSpell:ignore dbound, xbound, ybound, zbound
   BEVFusionConfig(
-    const std::size_t cloud_capacity, const std::vector<std::int64_t> & voxels_num,
-    const std::vector<double> & point_cloud_range, const std::vector<double> & voxel_size,
-    const std::vector<double> & dbound, const std::vector<double> & xbound,
-    const std::vector<double> & ybound, const std::vector<double> & zbound,
-    const std::size_t num_cameras, const std::size_t raw_image_height,
-    const std::size_t raw_image_width, const float img_aug_scale_x, const float img_aug_scale_y,
-    const float img_aug_offset_y, const std::size_t roi_height, const std::size_t roi_width,
-    const std::size_t features_height, const std::size_t features_width,
-    const std::size_t num_depth_features,
-    const std::size_t num_proposals, const float circle_nms_dist_threshold,
+    const bool sensor_fusion, const std::string & plugins_path, const std::int64_t out_size_factor,
+    const std::int64_t cloud_capacity, const std::int64_t max_points_per_voxel,
+    const std::vector<std::int64_t> & voxels_num, const std::vector<float> & point_cloud_range,
+    const std::vector<float> & voxel_size, const std::vector<float> & dbound,
+    const std::vector<float> & xbound, const std::vector<float> & ybound,
+    const std::vector<float> & zbound, const std::int64_t num_cameras,
+    const std::int64_t raw_image_height, const std::int64_t raw_image_width,
+    const float img_aug_scale_x, const float img_aug_scale_y, const std::int64_t roi_height,
+    const std::int64_t roi_width, const std::int64_t features_height,
+    const std::int64_t features_width, const std::int64_t num_depth_features,
+    const std::int64_t num_proposals, const float circle_nms_dist_threshold,
     const std::vector<double> & yaw_norm_thresholds, const float score_threshold)
   {
-    /* use_hash_voxelization_ = use_hash_voxelization; */
+    sensor_fusion_ = sensor_fusion;
+    plugins_path_ = plugins_path;
+
+    out_size_factor_ = out_size_factor;
+
     cloud_capacity_ = cloud_capacity;
+    max_points_per_voxel_ = max_points_per_voxel;
 
     if (voxels_num.size() == 3) {
-      max_voxels_ = voxels_num[2];
+      min_num_voxels_ = voxels_num[0];
+      max_num_voxels_ = voxels_num[2];
 
       voxels_num_[0] = voxels_num[0];
       voxels_num_[1] = voxels_num[1];
       voxels_num_[2] = voxels_num[2];
-
-      min_voxel_size_ = voxels_num[0];
-      opt_voxel_size_ = voxels_num[1];
-      max_voxel_size_ = voxels_num[2];
-
-      min_points_size_ = voxels_num[0];
-      opt_points_size_ = voxels_num[1];
-      max_points_size_ = voxels_num[2];
-
-      min_coors_size_ = voxels_num[0];
-      opt_coors_size_ = voxels_num[1];
-      max_coors_size_ = voxels_num[2];
     }
     if (point_cloud_range.size() == 6) {
-      min_x_range_ = static_cast<float>(point_cloud_range[0]);
-      min_y_range_ = static_cast<float>(point_cloud_range[1]);
-      min_z_range_ = static_cast<float>(point_cloud_range[2]);
-      max_x_range_ = static_cast<float>(point_cloud_range[3]);
-      max_y_range_ = static_cast<float>(point_cloud_range[4]);
-      max_z_range_ = static_cast<float>(point_cloud_range[5]);
+      min_x_range_ = point_cloud_range[0];
+      min_y_range_ = point_cloud_range[1];
+      min_z_range_ = point_cloud_range[2];
+      max_x_range_ = point_cloud_range[3];
+      max_y_range_ = point_cloud_range[4];
+      max_z_range_ = point_cloud_range[5];
     }
     if (voxel_size.size() == 3) {
-      voxel_x_size_ = static_cast<float>(voxel_size[0]);
-      voxel_y_size_ = static_cast<float>(voxel_size[1]);
-      voxel_z_size_ = static_cast<float>(voxel_size[2]);
+      voxel_x_size_ = voxel_size[0];
+      voxel_y_size_ = voxel_size[1];
+      voxel_z_size_ = voxel_size[2];
     }
     if (dbound.size() == 3 && xbound.size() == 3 && ybound.size() == 3 && zbound.size() == 3) {
       dbound_ = dbound;
@@ -85,14 +83,13 @@ public:
     raw_image_width_ = raw_image_width;
     img_aug_scale_x_ = img_aug_scale_x;
     img_aug_scale_y_ = img_aug_scale_y;
-    img_aug_offset_y_ = img_aug_offset_y;
     roi_height_ = roi_height;
     roi_width_ = roi_width;
     features_height_ = features_height;
     features_width_ = features_width;
     num_depth_features_ = num_depth_features;
-    resized_height_ = static_cast<std::size_t>(raw_image_height_ * img_aug_scale_y_);
-    resized_width_ = static_cast<std::size_t>(raw_image_width_ * img_aug_scale_x_);
+    resized_height_ = raw_image_height_ * img_aug_scale_y_;
+    resized_width_ = raw_image_width_ * img_aug_scale_x_;
 
     if (num_proposals > 0) {
       num_proposals_ = num_proposals;
@@ -109,107 +106,88 @@ public:
       yaw_norm_threshold =
         (yaw_norm_threshold >= 0.0 && yaw_norm_threshold < 1.0) ? yaw_norm_threshold : 0.0;
     }
-    grid_x_size_ = static_cast<std::size_t>((max_x_range_ - min_x_range_) / voxel_x_size_);
-    grid_y_size_ = static_cast<std::size_t>((max_y_range_ - min_y_range_) / voxel_y_size_);
-    grid_z_size_ = static_cast<std::size_t>((max_z_range_ - min_z_range_) / voxel_z_size_);
-
-    feature_x_size_ = grid_x_size_ / out_size_factor_;
-    feature_y_size_ = grid_y_size_ / out_size_factor_;
+    grid_x_size_ = static_cast<std::int64_t>((max_x_range_ - min_x_range_) / voxel_x_size_);
+    grid_y_size_ = static_cast<std::int64_t>((max_y_range_ - min_y_range_) / voxel_y_size_);
+    grid_z_size_ = static_cast<std::int64_t>((max_z_range_ - min_z_range_) / voxel_z_size_);
   }
 
-  ///// INPUT PARAMETERS /////
-  std::size_t cloud_capacity_{};
-  ///// KERNEL PARAMETERS /////
-  const std::size_t threads_for_voxel_{256};  // threads number for a block
-  const std::size_t points_per_voxel_{10};
-  const std::size_t warp_size_{32};          // one warp(32 threads) for one pillar
-  const std::size_t pillars_per_block_{64};  // one thread deals with one pillar
-                                             // and a block has pillars_per_block threads
-  std::size_t max_voxels_{60000};
+  ///// MODALITY /////
+  bool sensor_fusion_{};
+
+  // CUDA parameters
+  const std::uint32_t threads_per_block_{256};  // threads number for a block
+
+  // TensorRT parameters
+  std::string plugins_path_{};
 
   ///// NETWORK PARAMETERS /////
-  const std::size_t batch_size_{1};
-  const std::size_t num_classes_{5};
-  const std::size_t num_point_feature_size_{5};  // x, y, z, intensity, lag
-  // the dimension of the input cloud
-  float min_x_range_{-122.4};
-  float max_x_range_{122.4};
-  float min_y_range_{-122.4};
-  float max_y_range_{122.4};
-  float min_z_range_{-3.f};
-  float max_z_range_{5.f};
-  // the size of a pillar
-  float voxel_x_size_{0.17f};
-  float voxel_y_size_{0.17f};
-  float voxel_z_size_{0.2f};
 
-  // view transform parameters
-  std::vector<double> dbound_{};
+  // Common network parameters
+  std::int64_t out_size_factor_{};
 
-  // DepthLSSTransform parameters
-  std::vector<double> xbound_{};
-  std::vector<double> ybound_{};
-  std::vector<double> zbound_{};
+  std::int64_t cloud_capacity_{};
+  std::int64_t min_num_voxels_{};
+  std::int64_t max_num_voxels_{};
+  std::int64_t max_points_per_voxel_;
+  const std::int64_t num_point_feature_size_{5};  // x, y, z, intensity, lag
 
-  // Image parameters
-  std::size_t num_cameras_{};
-  std::size_t raw_image_height_{};
-  std::size_t raw_image_width_{};
+  // Pointcloud range in meters
+  float min_x_range_{};
+  float max_x_range_{};
+  float min_y_range_{};
+  float max_y_range_{};
+  float min_z_range_{};
+  float max_z_range_{};
+
+  // Voxel size in meters
+  float voxel_x_size_{};
+  float voxel_y_size_{};
+  float voxel_z_size_{};
+
+  // Grid size
+  std::int64_t grid_x_size_{};
+  std::int64_t grid_y_size_{};
+  std::int64_t grid_z_size_{};
+
+  // Camera branch parameters
+  std::vector<float> dbound_{};
+  std::vector<float> xbound_{};
+  std::vector<float> ybound_{};
+  std::vector<float> zbound_{};
+
+  std::int64_t num_cameras_{};
+  std::int64_t raw_image_height_{};
+  std::int64_t raw_image_width_{};
 
   float img_aug_scale_x_{};
   float img_aug_scale_y_{};
-  float img_aug_offset_y_{};
 
-  std::size_t roi_height_{};
-  std::size_t roi_width_{};
+  std::int64_t roi_height_{};
+  std::int64_t roi_width_{};
 
-  std::size_t resized_height_{};
-  std::size_t resized_width_{};
+  std::int64_t resized_height_{};
+  std::int64_t resized_width_{};
 
-  std::size_t features_height_{};
-  std::size_t features_width_{};
-  std::size_t num_depth_features_{};
+  std::int64_t features_height_{};
+  std::int64_t features_width_{};
+  std::int64_t num_depth_features_{};
 
-  const std::size_t out_size_factor_{8};
-  std::size_t num_proposals_{500};
+  // Head parameters
+  std::int64_t num_proposals_{};
+  const std::size_t num_classes_{5};
+
+  // Post processing parameters
+
   // the score threshold for classification
-  float score_threshold_{0.2};
-  float circle_nms_dist_threshold_{0.5};
-  std::vector<float> yaw_norm_thresholds_{0.3, 0.3, 0.3, 0.3, 0.0};
+  float score_threshold_{};
+
+  float circle_nms_dist_threshold_{};
+  std::vector<float> yaw_norm_thresholds_{};
   // the detected boxes result decode by (x, y, z, w, l, h, yaw, vx, vy)
-  const std::size_t num_box_values_{10};
-  // the input size of the 2D backbone network
-  std::size_t grid_x_size_{512};
-  std::size_t grid_y_size_{512};
-  std::size_t grid_z_size_{1};
-  // the output size of the 2D backbone network
-  std::size_t feature_x_size_{grid_x_size_ / out_size_factor_};
-  std::size_t feature_y_size_{grid_y_size_ / out_size_factor_};
+  const std::int64_t num_box_values_{10};
 
   ///// RUNTIME DIMENSIONS /////
-  std::vector<std::size_t> voxels_num_{5000, 30000, 60000};
-  // voxels
-  std::size_t min_voxel_size_{voxels_num_[0]};
-  std::size_t opt_voxel_size_{voxels_num_[1]};
-  std::size_t max_voxel_size_{voxels_num_[2]};
-
-  std::size_t min_point_in_voxel_size_{points_per_voxel_};
-  std::size_t opt_point_in_voxel_size_{points_per_voxel_};
-  std::size_t max_point_in_voxel_size_{points_per_voxel_};
-
-  std::size_t min_network_feature_size_{num_point_feature_size_};
-  std::size_t opt_network_feature_size_{num_point_feature_size_};
-  std::size_t max_network_feature_size_{num_point_feature_size_};
-
-  // num_points
-  std::size_t min_points_size_{voxels_num_[0]};
-  std::size_t opt_points_size_{voxels_num_[1]};
-  std::size_t max_points_size_{voxels_num_[2]};
-
-  // coors
-  std::size_t min_coors_size_{voxels_num_[0]};
-  std::size_t opt_coors_size_{voxels_num_[1]};
-  std::size_t max_coors_size_{voxels_num_[2]};
+  std::array<std::int64_t, 3> voxels_num_{};
 };
 
 }  // namespace autoware::lidar_bevfusion

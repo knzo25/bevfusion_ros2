@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,15 +15,11 @@
 #include "autoware/lidar_bevfusion/preprocess/pointcloud_densification.hpp"
 
 #include <pcl_ros/transforms.hpp>
-
-#include <pcl_conversions/pcl_conversions.h>
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_eigen/tf2_eigen.h>
-#else
 #include <tf2_eigen/tf2_eigen.hpp>
-#endif
 
 #include <boost/optional.hpp>
+
+#include <pcl_conversions/pcl_conversions.h>
 
 #include <string>
 #include <utility>
@@ -93,8 +89,7 @@ void PointCloudDensification::enqueue(
   affine_world2current_ = affine_world2current;
   current_timestamp_ = rclcpp::Time(msg.header.stamp).seconds();
 
-  auto data_d = cuda::make_unique<std::uint8_t[]>(
-    sizeof(std::uint8_t) * msg.width * msg.height * msg.point_step / sizeof(std::uint8_t));
+  auto data_d = autoware::cuda_utils::make_unique<InputPointType[]>(msg.width * msg.height);
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     data_d.get(), msg.data.data(), sizeof(std::uint8_t) * msg.width * msg.height * msg.point_step,

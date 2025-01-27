@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,8 @@
 #include <string>
 #include <vector>
 
-constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAME{"GetIndicePairsImplicitGemm"};
+constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAME{
+  "GetIndicePairsImplicitGemm"};
 constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_VERSION{"1"};
 constexpr char const * const kGET_INDICE_PAIRS_IMPLICIT_GEMM_PLUGIN_NAMESPACE{""};
 
@@ -57,9 +58,9 @@ struct GetIndicePairsImplicitGemmParameters
 };
 
 class GetIndicePairsImplicitGemmPlugin : public IPluginV3,
-                                      public IPluginV3OneCore,
-                                      public IPluginV3OneBuild,
-                                      public IPluginV3OneRuntime
+                                         public IPluginV3OneCore,
+                                         public IPluginV3OneBuild,
+                                         public IPluginV3OneRuntime
 {
 public:
   GetIndicePairsImplicitGemmPlugin(

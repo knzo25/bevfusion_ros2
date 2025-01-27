@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__LIDAR_BEVFUSION__ROS_UTILS_HPP_
 #define AUTOWARE__LIDAR_BEVFUSION__ROS_UTILS_HPP_
 
+#include "autoware/lidar_bevfusion/preprocess/point_type.hpp"
 #include "autoware/lidar_bevfusion/utils.hpp"
 
 #include <autoware/point_types/types.hpp>
@@ -29,72 +30,31 @@
 #include <string>
 #include <vector>
 
-#define CHECK_OFFSET(offset, structure, field) \
-  static_assert(                               \
-    offsetof(structure, field) == offset,      \
-    "Offset of " #field " in " #structure " does not match expected offset.")
-#define CHECK_TYPE(type, structure, field)                 \
-  static_assert(                                           \
-    std::is_same<decltype(structure::field), type>::value, \
-    "Type of " #field " in " #structure " does not match expected type.")
-#define CHECK_FIELD(offset, type, structure, field) \
-  CHECK_OFFSET(offset, structure, field);           \
-  CHECK_TYPE(type, structure, field)
+#define CHECK_OFFSET(structure1, structure2, field)             \
+  static_assert(                                                \
+    offsetof(structure1, field) == offsetof(structure2, field), \
+    "Offset of " #field " in " #structure1 " does not match the one in " #structure2 ".")
+#define CHECK_TYPE(structure1, structure2, field)                             \
+  static_assert(                                                              \
+    std::is_same_v<decltype(structure1::field), decltype(structure2::field)>, \
+    "Type of " #field " in " #structure1 " and " #structure1 " have different types.")
+#define CHECK_FIELD(structure1, structure2, field) \
+  CHECK_OFFSET(structure1, structure2, field);     \
+  CHECK_TYPE(structure1, structure2, field)
 
 namespace autoware::lidar_bevfusion
 {
 using sensor_msgs::msg::PointField;
 
-CHECK_FIELD(0, float, autoware::point_types::PointXYZIRCAEDT, x);
-CHECK_FIELD(4, float, autoware::point_types::PointXYZIRCAEDT, y);
-CHECK_FIELD(8, float, autoware::point_types::PointXYZIRCAEDT, z);
-CHECK_FIELD(12, uint8_t, autoware::point_types::PointXYZIRCAEDT, intensity);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, x);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, y);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, z);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, intensity);
+static_assert(sizeof(InputPointType) == sizeof(autoware::point_types::PointXYZIRC));
 
-struct CloudInfo
-{
-  std::uint32_t x_offset{0};
-  std::uint32_t y_offset{sizeof(float)};
-  std::uint32_t z_offset{sizeof(float) * 2};
-  std::uint32_t intensity_offset{sizeof(float) * 3};
-  std::uint8_t x_datatype{PointField::FLOAT32};
-  std::uint8_t y_datatype{PointField::FLOAT32};
-  std::uint8_t z_datatype{PointField::FLOAT32};
-  std::uint8_t intensity_datatype{PointField::UINT8};
-  std::uint8_t x_count{1};
-  std::uint8_t y_count{1};
-  std::uint8_t z_count{1};
-  std::uint8_t intensity_count{1};
-  std::uint32_t point_step{sizeof(autoware::point_types::PointXYZIRCAEDT)};
-  bool is_bigendian{false};
-
-  bool operator!=(const CloudInfo & rhs) const
-  {
-    return x_offset != rhs.x_offset || y_offset != rhs.y_offset || z_offset != rhs.z_offset ||
-           intensity_offset != rhs.intensity_offset || x_datatype != rhs.x_datatype ||
-           y_datatype != rhs.y_datatype || z_datatype != rhs.z_datatype ||
-           intensity_datatype != rhs.intensity_datatype || x_count != rhs.x_count ||
-           y_count != rhs.y_count || z_count != rhs.z_count ||
-           intensity_count != rhs.intensity_count || is_bigendian != rhs.is_bigendian;
-  }
-
-  friend std::ostream & operator<<(std::ostream & os, const CloudInfo & info)
-  {
-    os << "x_offset: " << static_cast<int>(info.x_offset) << std::endl;
-    os << "y_offset: " << static_cast<int>(info.y_offset) << std::endl;
-    os << "z_offset: " << static_cast<int>(info.z_offset) << std::endl;
-    os << "intensity_offset: " << static_cast<int>(info.intensity_offset) << std::endl;
-    os << "x_datatype: " << static_cast<int>(info.x_datatype) << std::endl;
-    os << "y_datatype: " << static_cast<int>(info.y_datatype) << std::endl;
-    os << "z_datatype: " << static_cast<int>(info.z_datatype) << std::endl;
-    os << "intensity_datatype: " << static_cast<int>(info.intensity_datatype) << std::endl;
-    os << "x_count: " << static_cast<int>(info.x_count) << std::endl;
-    os << "y_count: " << static_cast<int>(info.y_count) << std::endl;
-    os << "z_count: " << static_cast<int>(info.z_count) << std::endl;
-    os << "intensity_count: " << static_cast<int>(info.intensity_count) << std::endl;
-    os << "is_bigendian: " << static_cast<int>(info.is_bigendian) << std::endl;
-    return os;
-  }
-};
+// TODO(knzo25): will move this from the pointcloud preprocessor to aut autoware_point_types after
+// this is merged
+bool is_data_layout_compatible_with_point_xyzirc(const sensor_msgs::msg::PointCloud2 & input);
 
 void box3DToDetectedObject(
   const Box3D & box3d, const std::vector<std::string> & class_names,

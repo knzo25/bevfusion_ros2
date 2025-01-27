@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,8 +37,6 @@ struct Box3D
   float vx;
   float vy;
 };
-
-enum NetworkIO { voxels = 0, coors, num_points_per_voxel, cls_score, bbox_pred, dir_pred, ENUM_SIZE };
 
 // cspell: ignore divup
 template <typename T1, typename T2>

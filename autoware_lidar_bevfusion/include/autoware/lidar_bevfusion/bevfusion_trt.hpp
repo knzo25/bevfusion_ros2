@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
 #ifndef AUTOWARE__LIDAR_BEVFUSION__BEVFUSION_TRT_HPP_
 #define AUTOWARE__LIDAR_BEVFUSION__BEVFUSION_TRT_HPP_
 
-#include "autoware/lidar_bevfusion/cuda_utils.hpp"
-#include "autoware/lidar_bevfusion/network/network_trt.hpp"
 #include "autoware/lidar_bevfusion/postprocess/postprocess_kernel.hpp"
 #include "autoware/lidar_bevfusion/preprocess/pointcloud_densification.hpp"
 #include "autoware/lidar_bevfusion/preprocess/preprocess_kernel.hpp"
@@ -24,6 +22,9 @@
 #include "autoware/lidar_bevfusion/utils.hpp"
 #include "autoware/lidar_bevfusion/visibility_control.hpp"
 
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware/cuda_utils/cuda_unique_ptr.hpp>
+#include <autoware/tensorrt_common/tensorrt_common.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
 
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -42,6 +43,8 @@
 
 namespace autoware::lidar_bevfusion
 {
+
+using autoware::cuda_utils::CudaUniquePtr;
 
 class NetworkParam
 {
@@ -69,15 +72,15 @@ public:
   using Matrix4fRowM = Eigen::Matrix<float, 4, 4, Eigen::RowMajor>;
 
   explicit BEVFusionTRT(
-    const NetworkParam & network_param, const DensificationParam & densification_param,
-    const BEVFusionConfig & config);
+    const tensorrt_common::TrtCommonConfig & trt_config,
+    const DensificationParam & densification_param, const BEVFusionConfig & config);
   virtual ~BEVFusionTRT();
 
   bool detect(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & msg,
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & image_msgs,
-    const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
-    std::unordered_map<std::string, double> & proc_timing);
+    const std::vector<float> & camera_masks, const tf2_ros::Buffer & tf_buffer,
+    std::vector<Box3D> & det_boxes3d, std::unordered_map<std::string, double> & proc_timing);
 
   void setIntrinsicsExtrinsics(
     std::vector<sensor_msgs::msg::CameraInfo> & camera_info_vector,
@@ -85,25 +88,28 @@ public:
 
 protected:
   void initPtr();
+  void initTrt(const tensorrt_common::TrtCommonConfig & trt_config);
 
-  bool preprocess(
+  bool preProcess(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pc_msg,
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & image_msgs,
-    const tf2_ros::Buffer & tf_buffer);
+    const std::vector<float> & camera_masks, const tf2_ros::Buffer & tf_buffer);
 
   bool inference();
 
-  bool postprocess(std::vector<Box3D> & det_boxes3d);
+  bool postProcess(std::vector<Box3D> & det_boxes3d);
 
-  std::unique_ptr<NetworkTRT> network_trt_ptr_{nullptr};
+  std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};
   std::unique_ptr<VoxelGenerator> vg_ptr_{nullptr};
   std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{
     nullptr};
   std::unique_ptr<PreprocessCuda> pre_ptr_{nullptr};
   std::unique_ptr<PostprocessCuda> post_ptr_{nullptr};
   cudaStream_t stream_{nullptr};
+  std::vector<cudaStream_t> camera_streams_{};
 
   BEVFusionConfig config_;
+  std::vector<int> roi_start_y_vector_;
 
   // pre-process inputs
 
@@ -112,30 +118,31 @@ protected:
   unsigned int bbox_pred_size_{0};
 
   // lidar buffers
-  cuda::unique_ptr<float[]> points_d_{nullptr};
-  cuda::unique_ptr<float[]> voxel_features_d_{nullptr};
-  cuda::unique_ptr<std::int32_t[]> voxel_coords_d_{nullptr};
-  cuda::unique_ptr<std::int32_t[]> num_points_per_voxel_d_{nullptr};
+  CudaUniquePtr<float[]> points_d_{nullptr};
+  CudaUniquePtr<float[]> voxel_features_d_{nullptr};
+  CudaUniquePtr<std::int32_t[]> voxel_coords_d_{nullptr};
+  CudaUniquePtr<std::int32_t[]> num_points_per_voxel_d_{nullptr};
 
   // pre computed tensors
   std::int64_t num_geom_feats_{};
   std::int64_t num_kept_{};
   std::int64_t num_ranks_{};
   std::int64_t num_indices_{};
-  cuda::unique_ptr<float_t[]> lidar2image_d_{};
-  cuda::unique_ptr<std::int32_t[]> geom_feats_d_{};
-  cuda::unique_ptr<std::uint8_t[]> kept_d_{};
-  cuda::unique_ptr<std::int64_t[]> ranks_d_{};
-  cuda::unique_ptr<std::int64_t[]> indices_d_{};
+  CudaUniquePtr<float_t[]> lidar2image_d_{};
+  CudaUniquePtr<std::int32_t[]> geom_feats_d_{};
+  CudaUniquePtr<std::uint8_t[]> kept_d_{};
+  CudaUniquePtr<std::int64_t[]> ranks_d_{};
+  CudaUniquePtr<std::int64_t[]> indices_d_{};
 
   // image buffers
-  cuda::unique_ptr<std::uint8_t[]> roi_tensor_d_{nullptr};
-  std::vector<cuda::unique_ptr<std::uint8_t[]>> image_buffers_d_{};
+  CudaUniquePtr<std::uint8_t[]> roi_tensor_d_{nullptr};
+  std::vector<CudaUniquePtr<std::uint8_t[]>> image_buffers_d_{};
+  CudaUniquePtr<float[]> camera_masks_d_{nullptr};
 
   // output buffers
-  cuda::unique_ptr<std::int64_t[]> label_pred_output_d_{nullptr};
-  cuda::unique_ptr<float[]> bbox_pred_output_d_{nullptr};
-  cuda::unique_ptr<float[]> score_output_d_{nullptr};
+  CudaUniquePtr<std::int64_t[]> label_pred_output_d_{nullptr};
+  CudaUniquePtr<float[]> bbox_pred_output_d_{nullptr};
+  CudaUniquePtr<float[]> score_output_d_{nullptr};
 };
 
 }  // namespace autoware::lidar_bevfusion

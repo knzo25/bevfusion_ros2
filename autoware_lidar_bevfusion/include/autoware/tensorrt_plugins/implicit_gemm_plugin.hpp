@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,17 +18,16 @@
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
 #include <cuda_runtime.h>
-
-#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/convops/gemmops/GemmTunerSimple.h>
+#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <vector>
 #include <tuple>
+#include <vector>
 
 constexpr char const * const kIMPLICIT_GEMM_PLUGIN_NAME{"ImplicitGemm"};
 constexpr char const * const kIMPLICIT_GEMM_PLUGIN_VERSION{"1"};
@@ -50,15 +49,13 @@ struct ImplicitGemmParameters
 };
 
 class ImplicitGemmPlugin : public IPluginV3,
-                                      public IPluginV3OneCore,
-                                      public IPluginV3OneBuild,
-                                      public IPluginV3OneRuntime
+                           public IPluginV3OneCore,
+                           public IPluginV3OneBuild,
+                           public IPluginV3OneRuntime
 {
 public:
-
   using ConvTunerSimple = spconvlib::spconv::csrc::sparse::convops::spops::ConvTuner;
-  ImplicitGemmPlugin(
-    const std::string & name, ImplicitGemmParameters const & params);
+  ImplicitGemmPlugin(const std::string & name, ImplicitGemmParameters const & params);
 
   ~ImplicitGemmPlugin() override = default;
 
@@ -117,7 +114,6 @@ public:
     DynamicPluginTensorDesc const * outputs, std::int32_t num_outputs) const noexcept override;
 
 private:
- 
   static constexpr std::int32_t INOUT_IN_FEATURES_INDEX = 0;
   static constexpr std::int32_t INOUT_FILTERS_INDEX = 1;
   static constexpr std::int32_t INOUT_PAIR_FWD_INDEX = 2;
@@ -139,4 +135,4 @@ private:
 }  // namespace plugin
 }  // namespace nvinfer1
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__3D_FORWARD_PLUGIN_HPP_
+#endif  // AUTOWARE__TENSORRT_PLUGINS__IMPLICIT_GEMM_PLUGIN_HPP_

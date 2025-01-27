@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +19,56 @@
 #include <autoware/universe_utils/math/constants.hpp>
 
 #include <cstddef>
+#include <string>
+#include <vector>
+
 
 namespace autoware::lidar_bevfusion
 {
 
 using Label = autoware_perception_msgs::msg::ObjectClassification;
+
+bool is_data_layout_compatible_with_point_xyzirc(const sensor_msgs::msg::PointCloud2 & input)
+{
+  using PointIndex = autoware::point_types::PointXYZIRCIndex;
+  using autoware::point_types::PointXYZIRC;
+  if (input.fields.size() < 6) {
+    return false;
+  }
+  bool same_layout = true;
+  const auto & field_x = input.fields.at(static_cast<size_t>(PointIndex::X));
+  same_layout &= field_x.name == "x";
+  same_layout &= field_x.offset == offsetof(PointXYZIRC, x);
+  same_layout &= field_x.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_x.count == 1;
+  const auto & field_y = input.fields.at(static_cast<size_t>(PointIndex::Y));
+  same_layout &= field_y.name == "y";
+  same_layout &= field_y.offset == offsetof(PointXYZIRC, y);
+  same_layout &= field_y.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_y.count == 1;
+  const auto & field_z = input.fields.at(static_cast<size_t>(PointIndex::Z));
+  same_layout &= field_z.name == "z";
+  same_layout &= field_z.offset == offsetof(PointXYZIRC, z);
+  same_layout &= field_z.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_z.count == 1;
+  const auto & field_intensity = input.fields.at(static_cast<size_t>(PointIndex::Intensity));
+  same_layout &= field_intensity.name == "intensity";
+  same_layout &= field_intensity.offset == offsetof(PointXYZIRC, intensity);
+  same_layout &= field_intensity.datatype == sensor_msgs::msg::PointField::UINT8;
+  same_layout &= field_intensity.count == 1;
+  const auto & field_return_type = input.fields.at(static_cast<size_t>(PointIndex::ReturnType));
+  same_layout &= field_return_type.name == "return_type";
+  same_layout &= field_return_type.offset == offsetof(PointXYZIRC, return_type);
+  same_layout &= field_return_type.datatype == sensor_msgs::msg::PointField::UINT8;
+  same_layout &= field_return_type.count == 1;
+  const auto & field_ring = input.fields.at(static_cast<size_t>(PointIndex::Channel));
+  same_layout &= field_ring.name == "channel";
+  same_layout &= field_ring.offset == offsetof(PointXYZIRC, channel);
+  same_layout &= field_ring.datatype == sensor_msgs::msg::PointField::UINT16;
+  same_layout &= field_ring.count == 1;
+
+  return same_layout;
+}
 
 void box3DToDetectedObject(
   const Box3D & box3d, const std::vector<std::string> & class_names,

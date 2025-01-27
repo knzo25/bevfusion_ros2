@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,8 @@ int main(int argc, char ** argv)
 {
   if (argc != 5) {
     std::cerr << "Usage: " << argv[0]
-              << " <onnx_file_path> <plugin_library_path> <engine_file_path> <camera_lidar_mode>" << std::endl;
+              << " <onnx_file_path> <plugin_library_path> <engine_file_path> <camera_lidar_mode>"
+              << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -69,25 +70,35 @@ int main(int argc, char ** argv)
   auto profile = builder->createOptimizationProfile();
 
   profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims3{1, 10, 5});
-  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims3{128000, 10, 5});
-  profile->setDimensions("voxels", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims3{256000, 10, 5});
+  profile->setDimensions(
+    "voxels", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims3{128000, 10, 5});
+  profile->setDimensions(
+    "voxels", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims3{256000, 10, 5});
 
-  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{1, 4});
-  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{128000, 4});
-  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{256000, 4});
+  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{1, 3});
+  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{128000, 3});
+  profile->setDimensions("coors", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{256000, 3});
 
-  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims{1, {1}});
-  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims{1, {128000}});
-  profile->setDimensions("num_points_per_voxel", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims{1, {256000}});
+  profile->setDimensions(
+    "num_points_per_voxel", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims{1, {1}});
+  profile->setDimensions(
+    "num_points_per_voxel", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims{1, {128000}});
+  profile->setDimensions(
+    "num_points_per_voxel", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims{1, {256000}});
 
   if (camera_lidar_mode) {
+    profile->setDimensions("points", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{1, 5});
+    profile->setDimensions(
+      "points", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{128000, 5});
+    profile->setDimensions(
+      "points", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{256000, 5});
 
     profile->setDimensions(
-      "imgs", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 3, 256, 704});
+      "imgs", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 3, 384, 704});
     profile->setDimensions(
-      "imgs", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{6, 3, 256, 704});
+      "imgs", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{6, 3, 384, 704});
     profile->setDimensions(
-      "imgs", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{6, 3, 256, 704});
+      "imgs", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{6, 3, 384, 704});
 
     profile->setDimensions(
       "lidar2image", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims3{1, 4, 4});
@@ -98,24 +109,27 @@ int main(int argc, char ** argv)
 
     nvinfer1::Dims kept_min_dims, kept_max_dims;
     kept_min_dims.nbDims = 1;
-    kept_min_dims.d[0] = 0 * 118 * 32 * 88;
+    kept_min_dims.d[0] = 0 * 118 * 48 * 88;
     kept_max_dims.nbDims = 1;
-    kept_max_dims.d[0] = 6 * 118 * 32 * 88;
+    kept_max_dims.d[0] = 6 * 118 * 48 * 88;
 
     nvinfer1::Dims geom_feats_min_dims, geom_feats_opt_dims, geom_feats_max_dims;
     geom_feats_min_dims.nbDims = 1;
-    geom_feats_min_dims.d[0] = 0 * 118 * 32 * 88;
+    geom_feats_min_dims.d[0] = 0 * 118 * 48 * 88;
     geom_feats_opt_dims.nbDims = 1;
-    geom_feats_opt_dims.d[0] = 6 * 118 * 32 * 88 / 2;
+    geom_feats_opt_dims.d[0] = 6 * 118 * 48 * 88 / 2;
     geom_feats_max_dims.nbDims = 1;
-    geom_feats_max_dims.d[0] = 6 * 118 * 32 * 88;
+    geom_feats_max_dims.d[0] = 6 * 118 * 48 * 88;
 
     profile->setDimensions(
-      "geom_feats", nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims2{geom_feats_min_dims.d[0], 4});
+      "geom_feats", nvinfer1::OptProfileSelector::kMIN,
+      nvinfer1::Dims2{geom_feats_min_dims.d[0], 4});
     profile->setDimensions(
-      "geom_feats", nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims2{geom_feats_opt_dims.d[0], 4});
+      "geom_feats", nvinfer1::OptProfileSelector::kOPT,
+      nvinfer1::Dims2{geom_feats_opt_dims.d[0], 4});
     profile->setDimensions(
-      "geom_feats", nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims2{geom_feats_max_dims.d[0], 4});
+      "geom_feats", nvinfer1::OptProfileSelector::kMAX,
+      nvinfer1::Dims2{geom_feats_max_dims.d[0], 4});
 
     profile->setDimensions("kept", nvinfer1::OptProfileSelector::kMIN, kept_min_dims);
     profile->setDimensions("kept", nvinfer1::OptProfileSelector::kOPT, kept_max_dims);

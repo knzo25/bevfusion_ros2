@@ -68,7 +68,20 @@ else()
   set(CUDNN_AVAIL OFF)
 endif()
 
-if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
+# set flags for spconv availability
+option(SPCONV_AVAIL "spconv available" OFF)
+# try to find spconv
+find_package(cumm)
+find_package(spconv)
+if(${cumm_FOUND} AND ${spconv_FOUND})
+  message("spconv is available!")
+  set(SPCONV_AVAIL ON)
+else()
+  message("spconv is NOT Available")
+  set(SPCONV_AVAIL OFF)
+endif()
+
+if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL AND SPCONV_AVAIL)
   find_package(ament_cmake_auto REQUIRED)
   ament_auto_find_build_dependencies()
 
@@ -84,26 +97,13 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   # Find Eigen3
   find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
-  # Find OpenCV
-  find_package(OpenCV REQUIRED)
-
-  # Find spconv
-  find_package(spconv REQUIRED)
-
   add_definitions("-DTV_CUDA")
-
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D__CUDA_NO_HALF_OPERATORS__") #  -G -g --generate-line-info
 
   list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr -diag-suppress 1675 --extended-lambda")
 
   cuda_add_library(bev_ops SHARED
-      src/bev_ops/bev_pool_cuda.cu
+    src/bev_ops/bev_pool_cuda.cu
   )
-
-  # Start TensorRT plugins
-
-  # Find CUDA Toolkit
-  find_package(CUDAToolkit REQUIRED)
 
   add_library(autoware_tensorrt_plugins SHARED
     src/tensorrt_plugins/plugin_utils.cpp
@@ -136,9 +136,13 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     spconv::spconv
   )
 
+  target_include_directories(${PROJECT_NAME}_cuda_lib
+    SYSTEM PUBLIC
+    ${autoware_cuda_utils_INCLUDE_DIRS}
+  )
+
   ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/detection_class_remapper.cpp
-    lib/network/network_trt.cpp
     lib/postprocess/non_maximum_suppression.cpp
     lib/preprocess/voxel_generator.cpp
     lib/preprocess/pointcloud_densification.cpp
@@ -169,36 +173,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     $(autoware_point_types_INCLUDE_DIRS)
   )
 
-  add_executable(build_camera_lidar_engine
-    src/example/build_camera_lidar_engine.cpp
-  )
-
-  target_link_libraries(build_camera_lidar_engine PRIVATE
-    ${NVINFER}
-    ${NVONNXPARSER}
-    ${CUDA_LIBRARIES}
-    ${CUBLAS_LIBRARIES}
-    ${CUDA_curand_LIBRARY}
-    ${CUDNN_LIBRARY}
-    spconv::spconv
-  )
-
-  add_executable(run_camera_lidar_engine
-    src/example/run_camera_lidar_engine.cpp
-  )
-
-  target_compile_definitions(run_camera_lidar_engine PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
-
-  target_link_libraries(run_camera_lidar_engine PRIVATE
-    ${NVINFER}
-    ${CUDA_LIBRARIES}
-    Eigen3::Eigen
-    ${OpenCV_LIBRARIES}
-    ${PROJECT_NAME}_cuda_lib
-    ${PROJECT_NAME}_lib
-    spconv::spconv
-  )
-
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/lidar_bevfusion_node.cpp
   )
@@ -217,6 +191,10 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     DESTINATION lib
   )
 
+  install(
+    TARGETS autoware_tensorrt_plugins
+    DESTINATION share/${PROJECT_NAME}/plugins
+  )
 
   ament_auto_package(
     INSTALL_TO_SHARE

@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,15 +39,9 @@ public:
     return kIMPLICIT_GEMM_PLUGIN_NAMESPACE;
   }
 
-  char const * getPluginName() const noexcept override
-  {
-    return kIMPLICIT_GEMM_PLUGIN_NAME;
-  }
+  char const * getPluginName() const noexcept override { return kIMPLICIT_GEMM_PLUGIN_NAME; }
 
-  char const * getPluginVersion() const noexcept override
-  {
-    return kIMPLICIT_GEMM_PLUGIN_VERSION;
-  }
+  char const * getPluginVersion() const noexcept override { return kIMPLICIT_GEMM_PLUGIN_VERSION; }
 
   nvinfer1::PluginFieldCollection const * getFieldNames() noexcept override;
 

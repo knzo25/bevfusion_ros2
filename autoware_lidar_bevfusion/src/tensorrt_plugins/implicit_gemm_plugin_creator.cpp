@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@
 #include <NvInferRuntimePlugin.h>
 
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <mutex>
+#include <sstream>
+#include <string>
 
 namespace nvinfer1
 {
@@ -53,8 +56,7 @@ ImplicitGemmPluginCreator::ImplicitGemmPluginCreator()
   fc_.fields = plugin_attributes_.data();
 }
 
-nvinfer1::PluginFieldCollection const *
-ImplicitGemmPluginCreator::getFieldNames() noexcept
+nvinfer1::PluginFieldCollection const * ImplicitGemmPluginCreator::getFieldNames() noexcept
 {
   // This is only used in the build phase.
   return &fc_;
@@ -138,8 +140,7 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       ss << "output_scale: " << parameters.output_scale;
       logDebug(ss.str().c_str());
 
-      ImplicitGemmPlugin * const plugin{
-        new ImplicitGemmPlugin{std::string(name), parameters}};
+      ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), parameters}};
       return plugin;
     } catch (std::exception const & e) {
       caughtError(e);
@@ -156,11 +157,9 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       PLUGIN_VALIDATE(!strcmp(attr_name, "parameters"));
       PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
       PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
-      ImplicitGemmParameters params{
-        *(static_cast<ImplicitGemmParameters const *>(fields[0].data))};
+      ImplicitGemmParameters params{*(static_cast<ImplicitGemmParameters const *>(fields[0].data))};
 
-      ImplicitGemmPlugin * const plugin{
-        new ImplicitGemmPlugin{std::string(name), params}};
+      ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), params}};
       return plugin;
     } catch (std::exception const & e) {
       caughtError(e);

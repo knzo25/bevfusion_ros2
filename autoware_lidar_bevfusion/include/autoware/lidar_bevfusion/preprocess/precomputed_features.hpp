@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -80,6 +80,7 @@ std::tuple<
   Eigen::Matrix<std::int64_t, 1, Eigen::Dynamic, Eigen::RowMajor> >
 precompute_features(
   const std::vector<Matrix4fRowM> & lidar2camera_transforms,
+  const std::vector<Matrix4fRowM> & camera_aug_matrices,
   const std::vector<sensor_msgs::msg::CameraInfo> & camera_info_vector,
   const BEVFusionConfig & config);
 

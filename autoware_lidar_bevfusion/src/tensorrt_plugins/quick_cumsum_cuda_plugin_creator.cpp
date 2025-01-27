@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,11 @@
 #include <NvInferRuntimePlugin.h>
 
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 
 namespace nvinfer1
 {

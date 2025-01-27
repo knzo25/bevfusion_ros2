@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@
 
 namespace autoware::lidar_bevfusion
 {
-const std::size_t THREADS_PER_BLOCK = 256;
-
 struct is_score_greater
 {
   is_score_greater(float t) : t_(t) {}
@@ -63,23 +61,20 @@ __global__ void generateBoxes3D_kernel(
     return;
   }
 
-  // TODO(knzo25): the tensors should be transposed in the future for better performance
-
-  // yaw validation
-  const float yaw_sin = bbox_pred_output[7 * num_proposals + point_idx];  // original: 6
-  const float yaw_cos = bbox_pred_output[6 * num_proposals + point_idx];  // original: 7
+  const float yaw_sin = bbox_pred_output[6 * num_proposals + point_idx];
+  const float yaw_cos = bbox_pred_output[7 * num_proposals + point_idx];
   const float yaw_norm = sqrtf(yaw_sin * yaw_sin + yaw_cos * yaw_cos);
   const int label = static_cast<int>(label_pred_output[point_idx]);
 
   det_boxes3d[point_idx].label = label;
   det_boxes3d[point_idx].score =
     yaw_norm >= yaw_norm_thresholds[label] ? score_output[point_idx] : 0.f;
-  det_boxes3d[point_idx].y =
-    bbox_pred_output[0 * num_proposals + point_idx] * out_size_factor * voxel_size_x + min_x_range;
+
   det_boxes3d[point_idx].x =
+    bbox_pred_output[0 * num_proposals + point_idx] * out_size_factor * voxel_size_x + min_x_range;
+  det_boxes3d[point_idx].y =
     bbox_pred_output[1 * num_proposals + point_idx] * out_size_factor * voxel_size_y + min_y_range;
-  det_boxes3d[point_idx].z =
-    bbox_pred_output[2 * num_proposals + point_idx];  // TODO(knzo25): this may be wrong
+  det_boxes3d[point_idx].z = bbox_pred_output[2 * num_proposals + point_idx];
   det_boxes3d[point_idx].length = expf(bbox_pred_output[3 * num_proposals + point_idx]);
   det_boxes3d[point_idx].width = expf(bbox_pred_output[4 * num_proposals + point_idx]);
   det_boxes3d[point_idx].height = expf(bbox_pred_output[5 * num_proposals + point_idx]);
@@ -98,7 +93,7 @@ cudaError_t PostprocessCuda::generateDetectedBoxes3D_launch(
   const std::int64_t * label_pred_output, const float * bbox_pred_output,
   const float * score_output, std::vector<Box3D> & det_boxes3d, cudaStream_t stream)
 {
-  dim3 threads = {THREADS_PER_BLOCK};
+  dim3 threads = {config_.threads_per_block_};
   dim3 blocks = {divup(config_.num_proposals_, threads.x)};
 
   auto boxes3d_d = thrust::device_vector<Box3D>(config_.num_proposals_);

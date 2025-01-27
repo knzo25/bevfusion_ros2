@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@
 #include <cmath>
 #include <cstddef>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 namespace autoware::lidar_bevfusion
 {
@@ -37,7 +39,7 @@ Tensor4D create_frustum(const BEVFusionConfig & config)
 
   // Compute D (number of depth layers)
   int D = static_cast<Eigen::Index>(std::floor((dbound_end - dbound_start) / dbound_step));
-  assert(static_cast<std::size_t>(D) == config.num_depth_features_);
+  assert(static_cast<std::int64_t>(D) == config.num_depth_features_);
 
   Tensor1D ds_vec(D);
   for (Eigen::Index i = 0; i < D; ++i) {
@@ -307,6 +309,7 @@ std::tuple<
   Eigen::Matrix<std::int64_t, 1, Eigen::Dynamic, Eigen::RowMajor>>
 precompute_features(
   const std::vector<Matrix4fRowM> & lidar2camera_transforms,
+  const std::vector<Matrix4fRowM> & camera_aug_matrices,
   const std::vector<sensor_msgs::msg::CameraInfo> & camera_info_vector,
   const BEVFusionConfig & config)
 {
@@ -320,19 +323,15 @@ precompute_features(
   Tensor3D post_rots_inverse(config.num_cameras_, 3, 3);
   Tensor2D post_trans(config.num_cameras_, 3);
 
-  Matrix4fRowM img_aug_matrix = Matrix4fRowM::Identity();
-  img_aug_matrix(0, 0) = config.img_aug_scale_x_;
-  img_aug_matrix(1, 1) = config.img_aug_scale_y_;
-  img_aug_matrix(1, 3) = config.img_aug_offset_y_;
-
-  Matrix4fRowM img_aug_matrix_inverse = img_aug_matrix.inverse().eval();
-
-  for (std::size_t camera_id = 0; camera_id < config.num_cameras_; camera_id++) {
+  for (std::int64_t camera_id = 0; camera_id < config.num_cameras_; camera_id++) {
     Matrix4fRowM cam2image = Matrix4fRowM::Identity();
     cam2image(0, 0) = camera_info_vector[camera_id].p[0];
     cam2image(1, 1) = camera_info_vector[camera_id].p[5];
     cam2image(0, 2) = camera_info_vector[camera_id].p[2];
     cam2image(1, 2) = camera_info_vector[camera_id].p[6];
+
+    Matrix4fRowM img_aug_matrix = camera_aug_matrices[camera_id];
+    Matrix4fRowM img_aug_matrix_inverse = img_aug_matrix.inverse().eval();
 
     Matrix4fRowM lidar2camera = lidar2camera_transforms[camera_id];
     Matrix4fRowM camera2lidar = lidar2camera.inverse().eval();

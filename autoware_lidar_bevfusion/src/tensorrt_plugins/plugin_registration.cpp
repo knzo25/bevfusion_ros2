@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/tensorrt_plugins/quick_cumsum_cuda_plugin_creator.hpp"
 #include "autoware/tensorrt_plugins/get_indice_pairs_implicit_gemm_plugin_creator.hpp"
 #include "autoware/tensorrt_plugins/implicit_gemm_plugin_creator.hpp"
+#include "autoware/tensorrt_plugins/quick_cumsum_cuda_plugin_creator.hpp"
 
 #include <NvInferRuntime.h>
 
@@ -58,17 +58,16 @@ extern "C" void setLoggerFinder(nvinfer1::ILoggerFinder * finder)
   glogger_finder.setLoggerFinder(finder);
 }
 
-extern "C" nvinfer1::IPluginCreatorInterface * const * getPluginCreators(
-  std::int32_t & num_creators)
+extern "C" nvinfer1::IPluginCreatorInterface * const * getCreators(std::int32_t & num_creators)
 {
   num_creators = 3;
   static nvinfer1::plugin::QuickCumsumCudaPluginCreator quick_cumsum_cuda_plugin_creator{};
-  static nvinfer1::plugin::GetIndicePairsImplicitGemmPluginCreator get_indice_pairs_implicit_gemm_plugin_creator{};
+  static nvinfer1::plugin::GetIndicePairsImplicitGemmPluginCreator
+    get_indice_pairs_implicit_gemm_plugin_creator{};
   static nvinfer1::plugin::ImplicitGemmPluginCreator implicit_gemm_plugin_creator{};
 
   static nvinfer1::IPluginCreatorInterface * const plugin_creator_list[] = {
-    &quick_cumsum_cuda_plugin_creator, 
-    &get_indice_pairs_implicit_gemm_plugin_creator,
+    &quick_cumsum_cuda_plugin_creator, &get_indice_pairs_implicit_gemm_plugin_creator,
     &implicit_gemm_plugin_creator};
   return plugin_creator_list;
 }

@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 #include <autoware/lidar_bevfusion/detection_class_remapper.hpp>
 
 #include <cstdint>
-
+#include <limits>
+#include <vector>
 namespace autoware::lidar_bevfusion
 {
 

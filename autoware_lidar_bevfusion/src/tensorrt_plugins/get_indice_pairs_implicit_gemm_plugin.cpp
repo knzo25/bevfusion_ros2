@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,25 +16,24 @@
 
 #include "autoware/tensorrt_plugins/plugin_utils.hpp"
 
-#include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>
-#include <spconvlib/spconv/csrc/sparse/alloc/StaticAllocator.h>
-#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
-#include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
-
-#include <spconvlib/spconv/csrc/sparse/convops/SimpleExternalSpconvMatmul.h>
-
-#include <spconvlib/spconv/csrc/sparse/convops/gemmops/GemmTunerSimple.h>
-#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
-
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
+#include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>
+#include <spconvlib/spconv/csrc/sparse/alloc/StaticAllocator.h>
+#include <spconvlib/spconv/csrc/sparse/convops/SimpleExternalSpconvMatmul.h>
+#include <spconvlib/spconv/csrc/sparse/convops/gemmops/GemmTunerSimple.h>
+#include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
+#include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <functional>
 #include <iostream>
+#include <string>
+#include <tuple>
 #include <vector>
 
 // GetIndicePairsImplicitGemm
@@ -140,9 +139,9 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::configurePlugin(
   for (const std::int64_t ksize : params_.ksize) {
     kernel_volume *= ksize;
   }
-  
+
   PLUGIN_ASSERT(in[0].desc.dims.d[1] == 4);  // coords + 1
-  
+
   PLUGIN_ASSERT(out[0].desc.dims.d[1] == 4);  // coords + 1
   PLUGIN_ASSERT(out[0].desc.type == in[0].desc.type);
 
@@ -218,39 +217,28 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::getOutputShapes(
     outputs[3].d[0] = inputs[0].d[0];
 
   } else {
-
     auto opt_value = expr_builder.operation(
       DimensionOperation::kCEIL_DIV, *inputs[0].d[0], *expr_builder.constant(2));
 
     outputs[0].nbDims = 2;
-    outputs[0].d[0] = expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
+    outputs[0].d[0] =
+      expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
     outputs[0].d[1] = inputs[0].d[1];
 
     outputs[1].nbDims = 2;
     outputs[1].d[0] = expr_builder.constant(kernel_volume);
-    outputs[1].d[1] = expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
+    outputs[1].d[1] =
+      expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
 
     outputs[2].nbDims = 2;
-    outputs[2].d[0] = expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
+    outputs[2].d[0] =
+      expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
     outputs[2].d[1] = expr_builder.constant(1);
 
     outputs[3].nbDims = 1;
-    outputs[3].d[0] = expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
-    
+    outputs[3].d[0] =
+      expr_builder.declareSizeTensor(4, *opt_value, *expr_builder.constant(out_inds_num_limit_));
   }
-
-  /**
-   * out_inds.shape, out_inds.dtype
-(torch.Size([66693, 4]), torch.int32)
-pair_fwd.shape, pair_fwd.dtype
-(torch.Size([27, 66693]), torch.int32)
-pair_mask_fwd_splits.shape, pair_mask_fwd_splits.dtype
-(torch.Size([66693, 1]), torch.int32)
-mask_argsort_fwd_splits.shape, mask_argsort_fwd_splits.dtype
-(torch.Size([66693]), torch.int32)
-
-  */
-
 
   // num_activate_out
   outputs[4].nbDims = 0;
@@ -266,13 +254,10 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::enqueue(
   using SpconvOps = spconvlib::spconv::csrc::sparse::all::SpconvOps;
   using StaticAllocator = spconvlib::spconv::csrc::sparse::alloc::StaticAllocator;
 
-  bool is_subm = params_.subm;
-  // direct table: a hash based algorithm that don't need unique. enabled
-  // by default.
-  bool direct_table = true;
-  // only regular conv need direct table.
-  bool use_direct_table = direct_table && !is_subm;
-  int static_num_act_in = out_inds_num_limit_;
+  const bool is_subm = params_.subm;
+  const bool direct_table = true;
+  const bool use_direct_table = direct_table && !is_subm;
+  const int static_num_act_in = out_inds_num_limit_;
 
   std::vector<int> ksize(params_.ksize.begin(), params_.ksize.end());
   std::vector<int> stride(params_.stride.begin(), params_.stride.end());
@@ -280,31 +265,12 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::enqueue(
   std::vector<int> dilation(params_.dilation.begin(), params_.dilation.end());
   std::vector<int> input_dims(params_.spatial_shape.begin(), params_.spatial_shape.end());
 
+  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  std::vector<std::int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
+  std::int64_t out_spatial_volume = std::accumulate(
+    output_dims_i64.begin(), output_dims_i64.end(), static_cast<std::int64_t>(1), std::multiplies<std::int64_t>());
 
-  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride,
-                                                  padding, dilation);
-  std::vector<int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
-  // if shape is too large, we will use slower int64->int32 hash table instead
-  // of int32->int32 table.
-  int64_t out_spatial_volume =
-      std::accumulate(output_dims_i64.begin(), output_dims_i64.end(),
-                      int64_t(1), std::multiplies<int64_t>());
-
-  bool use_int64_hash_k =
-      out_spatial_volume >= int64_t(std::numeric_limits<int>::max());
-
-
-
-  /* std::transform(params_.ksize.begin(), params_.ksize.end(), ksize.begin(), 
-                  [](const auto & x) { return static_cast<int>(x); });
-  std::transform(params_.stride.begin(), params_.stride.end(), stride.begin(), 
-                  [](const auto & x) { return static_cast<int>(x); });
-  std::transform(params_.padding.begin(), params_.padding.end(), padding.begin(), 
-                  [](const auto & x) { return static_cast<int>(x); });
-  std::transform(params_.dilation.begin(), params_.dilation.end(), dilation.begin(), 
-                  [](const auto & x) { return static_cast<int>(x); });
-  std::transform(params_.spatial_shape.begin(), params_.spatial_shape.end(), input_dims.begin(), 
-                  [](const auto & x) { return static_cast<int>(x); }); */
+  bool use_int64_hash_k = out_spatial_volume >= static_cast<std::int64_t>(std::numeric_limits<int>::max());
 
   int kernel_volume = 1;
   for (const auto & ksize : params_.ksize) {
@@ -312,102 +278,56 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::enqueue(
   }
 
   auto max_act_out_theory = SpconvOps::get_handcrafted_max_act_out(
-      input_desc[0].dims.d[0], ksize, stride, padding, dilation);
-  // query workspace size.
-  /* int workspace_size = SpconvOps::get_indice_gen_workspace_size(
-      kernel_volume, out_inds_num_limit_, out_inds_num_limit_, out_inds_num_limit_,
-      is_subm, use_int64_hash_k, use_direct_table); */
-  // you should return workspace size in tensorrt plugin method.
-  //tv::Tensor workspace = tv::empty({workspace_size}, tv::uint8, 0);
-  /* tv::Tensor workspace_tensor =
-      tv::from_blob(workspace, {workspace_size}, tv::uint8, 0); */
-  // get tensor map required by pair gen from workspace
-  // keep in mind that our indice gen function use a "allocator" to alloc
-  // temp/out tensors, in python we use TorchAllocator which is a simple
-  // dynamic allocator, in c++ (inference engine) we need to use
-  // fixed-size workspace and create a static allocator.
-  auto ws_tensors = SpconvOps::get_indice_gen_tensors_from_workspace(
-      reinterpret_cast<std::uint8_t*>(workspace), kernel_volume, out_inds_num_limit_,
-      is_subm ? out_inds_num_limit_ : out_inds_num_limit_,
-      max_act_out_theory, is_subm, use_int64_hash_k, use_direct_table);
-  // pair can also have a upper bound.
-  // !!!!!IMPORTANT!!!!!!! if you provide a static (padded) pair_fwd and
-  // other indice data, the output layout is tight pair_fwd_correct =
-  // pair_fwd_padded.view(-1)[:KV * real_pair_size].view(KV,
-  // real_pair_size) this valid for pair_fwd, pair_bwd, pair_mask_fwd,
-  // pair_mask_bwd, mask_argsort_fwd, mask_argsort_bwd.
-  int pair_fwd_size_padded =
-      is_subm ? input_desc[0].dims.d[0] : out_inds_num_limit_;
-  tv::Tensor pair_fwd_padded =
-      tv::from_blob(outputs[1], {kernel_volume, pair_fwd_size_padded}, tv::int32, 0);
-  // you can find equivalent python code of following code in python
-  // package
-  bool is_split_mask =
-      params_.algo == static_cast<std::int64_t>(tv::gemm::SparseConvAlgo::kMaskSplitImplicitGemm);
-  int mask_count = is_split_mask ? 2 : 1;
+    input_desc[0].dims.d[0], ksize, stride, padding, dilation);
   
-  /* tv::Tensor pair_mask_fwd_padded =
-      tv::empty({mask_count, pair_fwd_size_padded}, tv::int32, 0);
-  tv::Tensor mask_argsort_fwd_padded =
-      tv::empty({mask_count, pair_fwd_size_padded}, tv::int32, 0);
-  tv::Tensor out_inds = tv::empty(
-      {is_subm ? input_desc[0].desc.dims.d[0] : out_inds_num_limit_, 4},
-      tv::int32, 0);
-  tv::Tensor indices_kernel_num = tv::zeros({kernel_volume}, tv::int32, 0); */
+  auto ws_tensors = SpconvOps::get_indice_gen_tensors_from_workspace(
+    reinterpret_cast<std::uint8_t *>(workspace), kernel_volume, out_inds_num_limit_,
+    is_subm ? out_inds_num_limit_ : out_inds_num_limit_, max_act_out_theory, is_subm,
+    use_int64_hash_k, use_direct_table);
+  
+  int pair_fwd_size_padded = is_subm ? input_desc[0].dims.d[0] : out_inds_num_limit_;
+  tv::Tensor pair_fwd_padded =
+    tv::from_blob(outputs[1], {kernel_volume, pair_fwd_size_padded}, tv::int32, 0);
+  
+  bool is_split_mask =
+    params_.algo == static_cast<std::int64_t>(tv::gemm::SparseConvAlgo::kMaskSplitImplicitGemm);
+  int mask_count = is_split_mask ? 2 : 1;
 
   tv::Tensor pair_mask_fwd_padded =
-      tv::from_blob(outputs[2], {mask_count, pair_fwd_size_padded}, tv::int32, 0);
+    tv::from_blob(outputs[2], {mask_count, pair_fwd_size_padded}, tv::int32, 0);
   tv::Tensor mask_argsort_fwd_padded =
-      tv::from_blob(outputs[3], {mask_count, pair_fwd_size_padded}, tv::int32, 0);
-  tv::Tensor out_inds = tv::from_blob(outputs[0], 
-      {is_subm ? input_desc[0].dims.d[0] : out_inds_num_limit_, 4},
-      tv::int32, 0);
+    tv::from_blob(outputs[3], {mask_count, pair_fwd_size_padded}, tv::int32, 0);
+  tv::Tensor out_inds = tv::from_blob(
+    outputs[0], {is_subm ? input_desc[0].dims.d[0] : out_inds_num_limit_, 4}, tv::int32, 0);
   tv::Tensor indices_kernel_num = tv::zeros({kernel_volume}, tv::int32, 0);
-  
-  tv::Tensor input_indices =
-      tv::from_blob(inputs[0], {input_desc[0].dims.d[0], 4}, tv::int32, 0);
+
+  tv::Tensor input_indices = tv::from_blob(inputs[0], {input_desc[0].dims.d[0], 4}, tv::int32, 0);
 
   std::tuple<tv::Tensor, int> pair_res;
 
   tv::Context ctx;
   ctx.set_cuda_stream_int(reinterpret_cast<std::uintptr_t>(stream));
-  
+
   if (is_subm) {
-    // subm out inds equal to input inds, just copy them
     out_inds.copy_(input_indices, ctx);
 
-    // subm exmaple
-    // create output tensors and insert them to static allocator
-    // output tensors needed in subm get_indice_pairs_implicit_gemm,
-    // saved to static allocator.
     ws_tensors.insert({SPCONV_ALLOC_PAIR_FWD, pair_fwd_padded});
     ws_tensors.insert({SPCONV_ALLOC_PAIR_MASK, pair_mask_fwd_padded});
-    ws_tensors.insert(
-        {SPCONV_ALLOC_MASK_ARG_SORT, mask_argsort_fwd_padded});
+    ws_tensors.insert({SPCONV_ALLOC_MASK_ARG_SORT, mask_argsort_fwd_padded});
     ws_tensors.insert({SPCONV_ALLOC_OUT_INDICES, out_inds});
-    ws_tensors.insert(
-        {SPCONV_ALLOC_INDICE_NUM_PER_LOC, indices_kernel_num});
+    ws_tensors.insert({SPCONV_ALLOC_INDICE_NUM_PER_LOC, indices_kernel_num});
     StaticAllocator alloc(ws_tensors);
 
     pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-        alloc, input_indices, params_.batch_size, input_dims,
-        static_cast<int>(params_.algo), ksize, stride, padding, dilation,
-        {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-        reinterpret_cast<std::uintptr_t>(stream), out_inds_num_limit_,
-        tv::CUDAKernelTimer(false), use_direct_table);
-    // for subm num_act_out always equal to num_act_in_real
+      alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
+      stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
+      reinterpret_cast<std::uintptr_t>(stream), out_inds_num_limit_, tv::CUDAKernelTimer(false),
+      use_direct_table);
 
   } else {
-    // WARNING be careful with inverse conv, understand python
-    // code first. no inverse example here.
-    // regular conv need more outputs, used for inversed conv.
-    // bwd shape is [KV, static num_act_in (previous num_act_out_bound)]
-    tv::Tensor pair_bwd_padded =
-        tv::empty({kernel_volume, static_num_act_in}, tv::int32, 0);
-    tv::Tensor pair_mask_bwd_padded =
-        tv::empty({mask_count, static_num_act_in}, tv::int32, 0);
-    tv::Tensor mask_argsort_bwd_padded =
-        tv::empty({mask_count, static_num_act_in}, tv::int32, 0);
+    tv::Tensor pair_bwd_padded = tv::empty({kernel_volume, static_num_act_in}, tv::int32, 0);
+    tv::Tensor pair_mask_bwd_padded = tv::empty({mask_count, static_num_act_in}, tv::int32, 0);
+    tv::Tensor mask_argsort_bwd_padded = tv::empty({mask_count, static_num_act_in}, tv::int32, 0);
 
     ws_tensors.insert({SPCONV_ALLOC_PAIR_FWD, pair_fwd_padded});
     ws_tensors.insert({SPCONV_ALLOC_PAIR_BWD, pair_bwd_padded});
@@ -415,28 +335,21 @@ std::int32_t GetIndicePairsImplicitGemmPlugin::enqueue(
     ws_tensors.insert({SPCONV_ALLOC_PAIR_MASK, pair_mask_fwd_padded});
     ws_tensors.insert({SPCONV_ALLOC_PAIR_MASK_BWD, pair_mask_bwd_padded});
 
-    ws_tensors.insert(
-        {SPCONV_ALLOC_MASK_ARG_SORT, mask_argsort_fwd_padded});
-    ws_tensors.insert(
-        {SPCONV_ALLOC_MASK_ARG_SORT_BWD, mask_argsort_bwd_padded});
+    ws_tensors.insert({SPCONV_ALLOC_MASK_ARG_SORT, mask_argsort_fwd_padded});
+    ws_tensors.insert({SPCONV_ALLOC_MASK_ARG_SORT_BWD, mask_argsort_bwd_padded});
 
     ws_tensors.insert({SPCONV_ALLOC_OUT_INDICES, out_inds});
-    ws_tensors.insert(
-        {SPCONV_ALLOC_INDICE_NUM_PER_LOC, indices_kernel_num});
+    ws_tensors.insert({SPCONV_ALLOC_INDICE_NUM_PER_LOC, indices_kernel_num});
 
     StaticAllocator alloc(ws_tensors);
 
     pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-        alloc, input_indices, params_.batch_size, input_dims,
-        static_cast<int>(params_.algo), ksize, stride, padding, dilation,
-        {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-        reinterpret_cast<std::uintptr_t>(stream), out_inds_num_limit_,
-        tv::CUDAKernelTimer(false), use_direct_table);
+      alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
+      stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
+      reinterpret_cast<std::uintptr_t>(stream), out_inds_num_limit_, tv::CUDAKernelTimer(false),
+      use_direct_table);
   }
-  // after get pair datas, we can start to do real convolution!
-  // in static inference engine, you need to split pair-gen and conv to
-  // different layers to reuse pair data
-  // here we just use previous result.
+
   std::int32_t num_act_out_real = std::get<1>(pair_res);
   std::int32_t * num_act_out_data = static_cast<std::int32_t *>(outputs[4]);
 
@@ -472,30 +385,20 @@ std::size_t GetIndicePairsImplicitGemmPlugin::getWorkspaceSize(
   using SpconvOps = spconvlib::spconv::csrc::sparse::all::SpconvOps;
 
   bool is_subm = params_.subm;
-  // direct table: a hash based algorithm that don't need unique. enabled
-  // by default.
-  bool direct_table = true;
-  // only regular conv need direct table.
-  bool use_direct_table = direct_table && !is_subm;
-  
-  
+  const bool direct_table = true;
+  const bool use_direct_table = direct_table && !is_subm;
+
   std::vector<int> ksize(params_.ksize.begin(), params_.ksize.end());
   std::vector<int> stride(params_.stride.begin(), params_.stride.end());
   std::vector<int> padding(params_.padding.begin(), params_.padding.end());
   std::vector<int> dilation(params_.dilation.begin(), params_.dilation.end());
   std::vector<int> input_dims(params_.spatial_shape.begin(), params_.spatial_shape.end());
 
-
-  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride,
-                                                  padding, dilation);
-  std::vector<int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
-  // if shape is too large, we will use slower int64->int32 hash table instead
-  // of int32->int32 table.
-  int64_t out_spatial_volume =
-      std::accumulate(output_dims_i64.begin(), output_dims_i64.end(),
-                      int64_t(1), std::multiplies<int64_t>());
-  bool use_int64_hash_k =
-      out_spatial_volume >= int64_t(std::numeric_limits<int>::max());
+  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  std::vector<std::int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
+  std::int64_t out_spatial_volume = std::accumulate(
+    output_dims_i64.begin(), output_dims_i64.end(), static_cast<std::int64_t>(1), std::multiplies<int64_t>());
+  bool use_int64_hash_k = out_spatial_volume >= static_cast<std::int64_t>(std::numeric_limits<int>::max());
 
   int kernel_volume = 1;
   for (const auto & ksize : params_.ksize) {
@@ -504,8 +407,8 @@ std::size_t GetIndicePairsImplicitGemmPlugin::getWorkspaceSize(
 
   // query workspace size.
   int workspace_size = SpconvOps::get_indice_gen_workspace_size(
-      kernel_volume, out_inds_num_limit_, out_inds_num_limit_, out_inds_num_limit_,
-      is_subm, use_int64_hash_k, use_direct_table);
+    kernel_volume, out_inds_num_limit_, out_inds_num_limit_, out_inds_num_limit_, is_subm,
+    use_int64_hash_k, use_direct_table);
 
   return static_cast<std::size_t>(workspace_size);
 }

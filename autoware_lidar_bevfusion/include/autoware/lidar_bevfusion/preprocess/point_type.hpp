@@ -12,18 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
-
-#include <NvInferRuntime.h>
+#ifndef AUTOWARE__LIDAR_BEVFUSION__PREPROCESS__POINT_TYPE_HPP_
+#define AUTOWARE__LIDAR_BEVFUSION__PREPROCESS__POINT_TYPE_HPP_
 
 #include <cstdint>
 
-// These are the functions that TensorRT library will call at the runtime.
+namespace autoware::lidar_bevfusion
+{
 
-extern "C" void setLoggerFinder(nvinfer1::ILoggerFinder * finder);
+struct InputPointType
+{
+  float x;
+  float y;
+  float z;
+  std::uint8_t intensity;
+  std::uint8_t return_type;
+  std::uint16_t channel;
+};
 
-extern "C" nvinfer1::IPluginCreatorInterface * const * getPluginCreators(
-  std::int32_t & num_creators);
+}  // namespace autoware::lidar_bevfusion
 
-#endif  // AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
+#endif  // AUTOWARE__LIDAR_BEVFUSION__PREPROCESS__POINT_TYPE_HPP_

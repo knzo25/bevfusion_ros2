@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,15 +13,19 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_plugins//get_indice_pairs_implicit_gemm_plugin_creator.hpp"
+
 #include "autoware/tensorrt_plugins//get_indice_pairs_implicit_gemm_plugin.hpp"
 #include "autoware/tensorrt_plugins/plugin_utils.hpp"
 
 #include <NvInferRuntimePlugin.h>
 
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <mutex>
+#include <sstream>
+#include <string>
 
 namespace nvinfer1
 {
@@ -32,7 +36,9 @@ REGISTER_TENSORRT_PLUGIN(GetIndicePairsImplicitGemmPluginCreator);
 
 GetIndicePairsImplicitGemmPluginCreator::GetIndicePairsImplicitGemmPluginCreator()
 {
-  std::cout << "GetIndicePairsImplicitGemmPluginCreator::GetIndicePairsImplicitGemmPluginCreator" << std::endl << std::flush;
+  std::cout << "GetIndicePairsImplicitGemmPluginCreator::GetIndicePairsImplicitGemmPluginCreator"
+            << std::endl
+            << std::flush;
 
   plugin_attributes_.clear();
   plugin_attributes_.emplace_back(
@@ -89,18 +95,15 @@ IPluginV3 * GetIndicePairsImplicitGemmPluginCreator::createPlugin(
 
         if (attr_name == "batch_size") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.batch_size =
-            static_cast<std::int32_t const *>(fields[i].data)[0];
+          parameters.batch_size = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "algo") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.algo =
-            static_cast<std::int32_t const *>(fields[i].data)[0];
+          parameters.algo = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "is_train") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.is_train =
-            static_cast<std::int32_t const *>(fields[i].data)[0];
+          parameters.is_train = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "dilation") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
@@ -207,13 +210,11 @@ IPluginV3 * GetIndicePairsImplicitGemmPluginCreator::createPlugin(
         }
         if (attr_name == "subm") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.subm =
-            static_cast<std::int32_t const *>(fields[i].data)[0];
+          parameters.subm = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
         if (attr_name == "transpose") {
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.transpose =
-            static_cast<std::int32_t const *>(fields[i].data)[0];
+          parameters.transpose = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
       }
 

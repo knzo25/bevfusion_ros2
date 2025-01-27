@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@
  * limitations under the License.
  */
 
-#include "autoware/lidar_bevfusion/cuda_utils.hpp"
+#include "autoware/lidar_bevfusion/preprocess/point_type.hpp"
 #include "autoware/lidar_bevfusion/preprocess/preprocess_kernel.hpp"
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
 
 #include <spconvlib/spconv/csrc/sparse/all/ops3d/Point2Voxel.h>
 
@@ -45,162 +47,97 @@ PreprocessCuda::PreprocessCuda(
 : stream_(stream), config_(config)
 {
   if (allocate_buffers) {
-      std::int64_t max_points = static_cast<std::int64_t>(config.cloud_capacity_);
-      indices_padded_no_batch_ = tv::empty({static_cast<std::int64_t>(config_.max_voxels_), 3}, tv::int32, 0);
-      hash_key_value_ = tv::empty({max_points * 2}, tv::custom128, 0);
-      point_indice_data_ = tv::empty({max_points}, tv::int64, 0);
-      points_voxel_id_ = tv::empty({max_points}, tv::int64, 0);    
+    hash_key_value_ = tv::empty({config.cloud_capacity_ * 2}, tv::custom128, 0);
+    point_indice_data_ = tv::empty({config.cloud_capacity_}, tv::int64, 0);
+    points_voxel_id_ = tv::empty({config.cloud_capacity_}, tv::int64, 0);
   }
 }
 
 __global__ void generateSweepPoints_kernel(
-  const std::uint8_t * input_data, std::size_t points_size, int input_point_step, float time_lag,
-  const float * transform_array, int num_features, float * output_points)
+  const InputPointType * __restrict__ input_points, std::size_t points_size, float time_lag,
+  const float * transform_array, int num_features, float * __restrict__ output_points)
 {
   int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= points_size) return;
 
-  union {
-    std::uint32_t raw{0};
-    float value;
-  } input_x, input_y, input_z;
+  const InputPointType * input_point = &input_points[point_idx];
+  float input_x = input_point->x;
+  float input_y = input_point->y;
+  float input_z = input_point->z;
+  float input_intensity = static_cast<float>(input_point->intensity);
 
-#pragma unroll
-  for (int i = 0; i < 4; i++) {  // 4 bytes for float32
-    input_x.raw |= input_data[point_idx * input_point_step + i] << i * 8;
-    input_y.raw |= input_data[point_idx * input_point_step + i + 4] << i * 8;
-    input_z.raw |= input_data[point_idx * input_point_step + i + 8] << i * 8;
-  }
-
-  float input_intensity = static_cast<float>(input_data[point_idx * input_point_step + 12]);
-
-  output_points[point_idx * num_features] =
-    transform_array[0] * input_x.value + transform_array[4] * input_y.value +
-    transform_array[8] * input_z.value + transform_array[12];
-  output_points[point_idx * num_features + 1] =
-    transform_array[1] * input_x.value + transform_array[5] * input_y.value +
-    transform_array[9] * input_z.value + transform_array[13];
-  output_points[point_idx * num_features + 2] =
-    transform_array[2] * input_x.value + transform_array[6] * input_y.value +
-    transform_array[10] * input_z.value + transform_array[14];
+  output_points[point_idx * num_features] = transform_array[0] * input_x +
+                                            transform_array[4] * input_y +
+                                            transform_array[8] * input_z + transform_array[12];
+  output_points[point_idx * num_features + 1] = transform_array[1] * input_x +
+                                                transform_array[5] * input_y +
+                                                transform_array[9] * input_z + transform_array[13];
+  output_points[point_idx * num_features + 2] = transform_array[2] * input_x +
+                                                transform_array[6] * input_y +
+                                                transform_array[10] * input_z + transform_array[14];
   output_points[point_idx * num_features + 3] = input_intensity;
   output_points[point_idx * num_features + 4] = time_lag;
 }
 
 cudaError_t PreprocessCuda::generateSweepPoints_launch(
-  const std::uint8_t * input_data, std::size_t points_size, int input_point_step, float time_lag,
+  const InputPointType * input_data, std::size_t points_size, float time_lag,
   const float * transform_array, float * output_points)
 {
-  dim3 blocks(divup(points_size, config_.threads_for_voxel_));
-  dim3 threads(config_.threads_for_voxel_);
+  dim3 blocks(divup(points_size, config_.threads_per_block_));
+  dim3 threads(config_.threads_per_block_);
 
   generateSweepPoints_kernel<<<blocks, threads, 0, stream_>>>(
-    input_data, points_size, input_point_step, time_lag, transform_array,
-    config_.num_point_feature_size_, output_points);
+    input_data, points_size, time_lag, transform_array, config_.num_point_feature_size_,
+    output_points);
 
   cudaError_t err = cudaGetLastError();
   return err;
 }
-
-
-__global__ void formatCoors_kernel(
-  std::int32_t * input_voxel_coords, std::int32_t * output_voxel_coords, unsigned int num_voxels)
-{
-  int voxel_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (voxel_idx >= num_voxels) return;
-
-  // the base code uses yxz. spconv uses zyx
-  std::int32_t voxel_coord_z = input_voxel_coords[3 * voxel_idx + 0];
-  std::int32_t voxel_coord_y = input_voxel_coords[3 * voxel_idx + 1];
-  std::int32_t voxel_coord_x = input_voxel_coords[3 * voxel_idx + 2];
-
-  output_voxel_coords[4 * voxel_idx + 0] = 0;
-  output_voxel_coords[4 * voxel_idx + 1] = voxel_coord_y;
-  output_voxel_coords[4 * voxel_idx + 2] = voxel_coord_x;
-  output_voxel_coords[4 * voxel_idx + 3] = voxel_coord_z;
-}
-
-cudaError_t PreprocessCuda::formatCoors_launch(
-  std::int32_t * input_voxel_coords, std::int32_t * output_voxel_coords, unsigned int num_voxels)
-{
-  if (num_voxels == 0) {
-    return cudaGetLastError();
-  }
-  dim3 blocks(divup(num_voxels, 256));
-  dim3 threads(256);
-
-  formatCoors_kernel<<<blocks, threads, 0, stream_>>>(
-    input_voxel_coords, output_voxel_coords, num_voxels);
-  cudaError_t err = cudaGetLastError();
-  return err;
-}
-
 
 std::size_t PreprocessCuda::generateVoxels(
-  const float * points, 
-  unsigned int points_size, 
-  float * voxel_features, 
-  std::int32_t * voxel_coords,
-  std::int32_t * num_points_per_voxel)
+  const float * points, unsigned int points_size, float * voxel_features,
+  std::int32_t * voxel_coords, std::int32_t * num_points_per_voxel)
 {
-  using Point2VoxelGPU3D =
-    spconvlib::spconv::csrc::sparse::all::ops3d::Point2Voxel;
+  using Point2VoxelGPU3D = spconvlib::spconv::csrc::sparse::all::ops3d::Point2Voxel;
 
-  int max_num_voxels = config_.max_voxels_;
-  int num_point_per_voxel = config_.points_per_voxel_;
   std::array<float, 3> vsize_xyz{
-    config_.voxel_z_size_, 
-    config_.voxel_y_size_,
-    config_.voxel_x_size_
-  };
+    config_.voxel_z_size_, config_.voxel_y_size_, config_.voxel_x_size_};
 
   std::array<std::int32_t, 3> grid_size{
-    static_cast<int32_t>(config_.grid_z_size_), 
-    static_cast<int32_t>(config_.grid_y_size_),
-    static_cast<int32_t>(config_.grid_x_size_)
-  };
+    static_cast<std::int32_t>(config_.grid_z_size_),
+    static_cast<std::int32_t>(config_.grid_y_size_),
+    static_cast<std::int32_t>(config_.grid_x_size_)};
 
-  std::array<int64_t, 3> grid_stride{
-    static_cast<int64_t>(config_.grid_y_size_* config_.grid_x_size_) ,
-    static_cast<int64_t>(config_.grid_x_size_),
-    1
-  };
+  std::array<std::int64_t, 3> grid_stride{
+    static_cast<std::int64_t>(config_.grid_y_size_ * config_.grid_x_size_),
+    static_cast<std::int64_t>(config_.grid_x_size_), 1};
 
-  std::array<float, 6> coors_range{
-    config_.min_z_range_, 
-    config_.min_y_range_,
-    config_.min_x_range_,
-    config_.max_z_range_, 
-    config_.max_y_range_,
-    config_.max_x_range_
-  };
+  std::array<float, 6> coors_range{config_.min_z_range_, config_.min_y_range_,
+                                   config_.min_x_range_, config_.max_z_range_,
+                                   config_.max_y_range_, config_.max_x_range_};
 
-  tv::Tensor pc =
-    tv::from_blob(points, 
-    {static_cast<int>(points_size), 5},
-    tv::float32, 0);
+  tv::Tensor pc = tv::from_blob(
+    points, {static_cast<std::int64_t>(points_size), config_.num_point_feature_size_}, tv::float32,
+    0);
 
   auto point_limit = pc.dim(0);
 
   tv::Tensor voxels_padded = tv::from_blob(
-      voxel_features,
-      {max_num_voxels, num_point_per_voxel, pc.dim(1)}, tv::float32, 0);
+    voxel_features, {config_.max_num_voxels_, config_.max_points_per_voxel_, pc.dim(1)},
+    tv::float32, 0);
 
-  tv::Tensor num_points_per_voxel_tensor = tv::from_blob(
-      num_points_per_voxel,
-      {static_cast<std::int64_t>(config_.max_voxels_)}, tv::int32, 0);
-  
+  tv::Tensor indices_padded_no_batch =
+    tv::from_blob(voxel_coords, {config_.max_num_voxels_, 3}, tv::int32, 0);
+
+  tv::Tensor num_points_per_voxel_tensor =
+    tv::from_blob(num_points_per_voxel, {config_.max_num_voxels_}, tv::int32, 0);
+
   auto p2v_res = Point2VoxelGPU3D::point_to_voxel_hash_static(
-      pc, voxels_padded, indices_padded_no_batch_, num_points_per_voxel_tensor,
-      hash_key_value_, point_indice_data_, points_voxel_id_, vsize_xyz,
-      grid_size,
-      grid_stride,
-      coors_range,
-      true, false, reinterpret_cast<std::uintptr_t>(stream_));
+    pc, voxels_padded, indices_padded_no_batch, num_points_per_voxel_tensor, hash_key_value_,
+    point_indice_data_, points_voxel_id_, vsize_xyz, grid_size, grid_stride, coors_range, true,
+    false, reinterpret_cast<std::uintptr_t>(stream_));
 
   std::size_t real_num_voxels = static_cast<std::size_t>(std::get<0>(p2v_res).dim(0));
-  
-  CHECK_CUDA_ERROR(formatCoors_launch(indices_padded_no_batch_.data_ptr<std::int32_t>(), voxel_coords, real_num_voxels));   
 
   return real_num_voxels;
 }
@@ -273,14 +210,15 @@ cudaError_t PreprocessCuda::resize_and_extract_roi_launch(
   int W,                     // Original image dimensions
   int H2, int W2,            // Resized image dimensions
   int H3, int W3,            // ROI dimensions
-  int y_start, int x_start)  // ROI top-left coordinates in resized image
+  int y_start, int x_start,  // ROI top-left coordinates in resized image
+  cudaStream_t stream)
 {
   // Define the block and grid dimensions
   dim3 threads(16, 16);
   dim3 blocks(divup(W3, threads.x), divup(H3, threads.y));
 
   // Launch the kernel
-  resize_and_extract_roi<<<blocks, threads, 0, stream_>>>(
+  resize_and_extract_roi<<<blocks, threads, 0, stream>>>(
     input_img, output_img, H, W, H2, W2, H3, W3, y_start, x_start);
 
   // Check for errors

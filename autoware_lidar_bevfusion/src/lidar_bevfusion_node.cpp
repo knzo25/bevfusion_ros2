@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,10 @@
 #include "autoware/lidar_bevfusion/utils.hpp"
 
 #include <cstddef>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace autoware::lidar_bevfusion
 {
@@ -25,49 +29,65 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
 : Node("lidar_bevfusion", options), tf_buffer_(this->get_clock())
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
-  // network
-  class_names_ = this->declare_parameter<std::vector<std::string>>("class_names", descriptor);
+
+  // Modality
+  sensor_fusion_ = this->declare_parameter<bool>("sensor_fusion", descriptor);
+
+  // Non network parameters
+  max_camera_lidar_delay_ = this->declare_parameter<float>("max_camera_lidar_delay", descriptor);
+
+  // TensorRT parameters
+  const std::string plugins_path = this->declare_parameter<std::string>("plugins_path", descriptor);
+
+  // Network parameters
+  const std::string onnx_path = this->declare_parameter<std::string>("onnx_path", descriptor);
+  const std::string engine_path = this->declare_parameter<std::string>("engine_path", descriptor);
   const std::string trt_precision =
     this->declare_parameter<std::string>("trt_precision", descriptor);
 
-  // Pointcloud branch parameters
-  const std::size_t cloud_capacity =
-    this->declare_parameter<std::int64_t>("cloud_capacity", descriptor);
+  // Common parameters
+  const auto out_size_factor = this->declare_parameter<std::int64_t>("out_size_factor", descriptor);
+
+  auto to_float_vector = [](const auto & v) -> std::vector<float> {
+    return std::vector<float>(v.begin(), v.end());
+  };
+
+  // Lidar branch parameters
+  const auto cloud_capacity = this->declare_parameter<std::int64_t>("cloud_capacity", descriptor);
+  const auto max_points_per_voxel =
+    this->declare_parameter<std::int64_t>("max_points_per_voxel", descriptor);
   const auto voxels_num =
     this->declare_parameter<std::vector<std::int64_t>>("voxels_num", descriptor);
   const auto point_cloud_range =
-    this->declare_parameter<std::vector<double>>("point_cloud_range", descriptor);
-  const auto voxel_size = this->declare_parameter<std::vector<float>>("voxel_size", descriptor);
+    to_float_vector(this->declare_parameter<std::vector<double>>("point_cloud_range", descriptor));
+  const auto voxel_size =
+    to_float_vector(this->declare_parameter<std::vector<double>>("voxel_size", descriptor));
 
   // Camera branch parameters
-  const auto dbound = this->declare_parameter<std::vector<double>>("dbound", descriptor);
-  const auto xbound = this->declare_parameter<std::vector<double>>("xbound", descriptor);
-  const auto ybound = this->declare_parameter<std::vector<double>>("ybound", descriptor);
-  const auto zbound = this->declare_parameter<std::vector<double>>("zbound", descriptor);
-  const std::size_t num_cameras =
-    static_cast<std::size_t>(this->declare_parameter<int>("num_cameras", descriptor));
-  const std::size_t raw_image_height =
-    static_cast<std::size_t>(this->declare_parameter<int>("raw_image_height", descriptor));
-  const std::size_t raw_image_width =
-    static_cast<std::size_t>(this->declare_parameter<int>("raw_image_width", descriptor));
-  const float img_aug_scale_x = this->declare_parameter<float>("img_aug_scale_x", descriptor);
-  const float img_aug_scale_y = this->declare_parameter<float>("img_aug_scale_y", descriptor);
-  const float img_aug_offset_y = this->declare_parameter<float>("img_aug_offset_y", descriptor);
-  const std::size_t roi_height =
-    static_cast<std::size_t>(this->declare_parameter<int>("roi_height", descriptor));
-  const std::size_t roi_width =
-    static_cast<std::size_t>(this->declare_parameter<int>("roi_width", descriptor));
-  const std::size_t features_height =
-    static_cast<std::size_t>(this->declare_parameter<int>("features_height", descriptor));
-  const std::size_t features_width =
-    static_cast<std::size_t>(this->declare_parameter<int>("features_width", descriptor));
-  const std::size_t num_depth_features =
-    static_cast<std::size_t>(this->declare_parameter<int>("num_depth_features", descriptor));
+  // cSpell:ignore dbound xbound ybound zbound
+  const auto dbound =
+    to_float_vector(this->declare_parameter<std::vector<double>>("dbound", descriptor));
+  const auto xbound =
+    to_float_vector(this->declare_parameter<std::vector<double>>("xbound", descriptor));
+  const auto ybound =
+    to_float_vector(this->declare_parameter<std::vector<double>>("ybound", descriptor));
+  const auto zbound =
+    to_float_vector(this->declare_parameter<std::vector<double>>("zbound", descriptor));
+  const auto num_cameras = this->declare_parameter<std::int64_t>("num_cameras", descriptor);
+  const auto raw_image_height =
+    this->declare_parameter<std::int64_t>("raw_image_height", descriptor);
+  const auto raw_image_width = this->declare_parameter<std::int64_t>("raw_image_width", descriptor);
+  const auto img_aug_scale_x = this->declare_parameter<float>("img_aug_scale_x", descriptor);
+  const auto img_aug_scale_y = this->declare_parameter<float>("img_aug_scale_y", descriptor);
+  const auto roi_height = this->declare_parameter<std::int64_t>("roi_height", descriptor);
+  const auto roi_width = this->declare_parameter<std::int64_t>("roi_width", descriptor);
+  const auto features_height = this->declare_parameter<std::int64_t>("features_height", descriptor);
+  const auto features_width = this->declare_parameter<int>("features_width", descriptor);
+  const auto num_depth_features = this->declare_parameter<int>("num_depth_features", descriptor);
 
-  const std::size_t num_proposals =
-    this->declare_parameter<std::int64_t>("num_proposals", descriptor);
-  const std::string onnx_path = this->declare_parameter<std::string>("onnx_path", descriptor);
-  const std::string engine_path = this->declare_parameter<std::string>("engine_path", descriptor);
+  // Head parameters
+  const auto num_proposals = this->declare_parameter<std::int64_t>("num_proposals", descriptor);
+  class_names_ = this->declare_parameter<std::vector<std::string>>("class_names", descriptor);
 
   if (point_cloud_range.size() != 6) {
     RCLCPP_WARN_STREAM(
@@ -84,7 +104,7 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
   const std::string densification_world_frame_id =
     this->declare_parameter<std::string>("densification_world_frame_id", descriptor);
   const int densification_num_past_frames =
-    this->declare_parameter<int64_t>("densification_num_past_frames", descriptor);
+    this->declare_parameter<std::int64_t>("densification_num_past_frames", descriptor);
 
   // post-process
   const float circle_nms_dist_threshold =
@@ -104,18 +124,18 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
   const float score_threshold =
     static_cast<float>(this->declare_parameter<double>("score_threshold", descriptor));
 
-  NetworkParam network_param(onnx_path, engine_path, trt_precision);
   DensificationParam densification_param(
     densification_world_frame_id, densification_num_past_frames);
 
   BEVFusionConfig config(
-    cloud_capacity, voxels_num, point_cloud_range, voxel_size, dbound, xbound, ybound, zbound,
-    num_cameras, raw_image_height, raw_image_width, img_aug_scale_x, img_aug_scale_y,
-    img_aug_offset_y, roi_height, roi_width, features_height, features_width, num_depth_features,
-    num_proposals, circle_nms_dist_threshold, yaw_norm_thresholds, score_threshold);
+    sensor_fusion_, plugins_path, out_size_factor, cloud_capacity, max_points_per_voxel, voxels_num,
+    point_cloud_range, voxel_size, dbound, xbound, ybound, zbound, num_cameras, raw_image_height,
+    raw_image_width, img_aug_scale_x, img_aug_scale_y, roi_height, roi_width, features_height,
+    features_width, num_depth_features, num_proposals, circle_nms_dist_threshold,
+    yaw_norm_thresholds, score_threshold);
 
-  const auto allow_remapping_by_area_matrix =
-    this->declare_parameter<std::vector<int64_t>>("allow_remapping_by_area_matrix", descriptor);
+  const auto allow_remapping_by_area_matrix = this->declare_parameter<std::vector<std::int64_t>>(
+    "allow_remapping_by_area_matrix", descriptor);
   const auto min_area_matrix =
     this->declare_parameter<std::vector<double>>("min_area_matrix", descriptor);
   const auto max_area_matrix =
@@ -123,7 +143,9 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
   detection_class_remapper_.setParameters(
     allow_remapping_by_area_matrix, min_area_matrix, max_area_matrix);
 
-  detector_ptr_ = std::make_unique<BEVFusionTRT>(network_param, densification_param, config);
+  auto trt_config =
+    tensorrt_common::TrtCommonConfig(onnx_path, trt_precision, engine_path, 1ULL << 32U);
+  detector_ptr_ = std::make_unique<BEVFusionTRT>(trt_config, densification_param, config);
 
   cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     "~/input/pointcloud", rclcpp::SensorDataQoS{}.keep_last(1),
@@ -132,24 +154,26 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
   objects_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "~/output/objects", rclcpp::QoS(1));
 
-  image_subs_.resize(num_cameras);
-  camera_info_subs_.resize(num_cameras);
-  image_msgs_.resize(num_cameras);
-  camera_info_msgs_.resize(num_cameras);
-  lidar2camera_extrinsics_.resize(num_cameras);
+  if (sensor_fusion_) {
+    image_subs_.resize(num_cameras);
+    camera_info_subs_.resize(num_cameras);
+    image_msgs_.resize(num_cameras);
+    camera_info_msgs_.resize(num_cameras);
+    lidar2camera_extrinsics_.resize(num_cameras);
 
-  for (std::size_t camera_id = 0; camera_id < num_cameras; ++camera_id) {
-    image_subs_[camera_id] = this->create_subscription<sensor_msgs::msg::Image>(
-      "~/input/image" + std::to_string(camera_id), rclcpp::SensorDataQoS{}.keep_last(1),
-      [this, camera_id](const sensor_msgs::msg::Image::ConstSharedPtr msg) {
-        this->imageCallback(msg, camera_id);
-      });
+    for (std::int64_t camera_id = 0; camera_id < num_cameras; ++camera_id) {
+      image_subs_[camera_id] = this->create_subscription<sensor_msgs::msg::Image>(
+        "~/input/image" + std::to_string(camera_id), rclcpp::SensorDataQoS{}.keep_last(1),
+        [this, camera_id](const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+          this->imageCallback(msg, camera_id);
+        });
 
-    camera_info_subs_[camera_id] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-      "~/input/camera_info" + std::to_string(camera_id), rclcpp::SensorDataQoS{}.keep_last(1),
-      [this, camera_id](const sensor_msgs::msg::CameraInfo & msg) {
-        this->cameraInfoCallback(msg, camera_id);
-      });
+      camera_info_subs_[camera_id] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+        "~/input/camera_info" + std::to_string(camera_id), rclcpp::SensorDataQoS{}.keep_last(1),
+        [this, camera_id](const sensor_msgs::msg::CameraInfo & msg) {
+          this->cameraInfoCallback(msg, camera_id);
+        });
+    }
   }
 
   published_time_pub_ = std::make_unique<autoware::universe_utils::PublishedTimePublisher>(this);
@@ -165,7 +189,7 @@ LidarBEVFusionNode::LidarBEVFusionNode(const rclcpp::NodeOptions & options)
   }
 
   if (this->declare_parameter<bool>("build_only", false, descriptor)) {
-    RCLCPP_INFO(this->get_logger(), "TensorRT engine is built and shutdown node.");
+    RCLCPP_INFO(this->get_logger(), "TensorRT engine was built Shutting down the node.");
     rclcpp::shutdown();
   }
 }
@@ -174,11 +198,11 @@ void LidarBEVFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::Cons
 {
   lidar_frame_ = pc_msg->header.frame_id;
 
-  if (!extrinsics_available_ || !images_available_ || !intrinsics_available_) {
+  if (sensor_fusion_ && (!extrinsics_available_ || !images_available_ || !intrinsics_available_)) {
     return;
   }
 
-  if (!intrinsics_extrinsics_precomputed_) {
+  if (sensor_fusion_ && !intrinsics_extrinsics_precomputed_) {
     std::vector<sensor_msgs::msg::CameraInfo> camera_info_msgs;
     std::vector<Matrix4f> lidar2camera_extrinsics;
 
@@ -204,10 +228,18 @@ void LidarBEVFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::Cons
     stop_watch_ptr_->toc("processing/total", true);
   }
 
+  double lidar_stamp = rclcpp::Time(pc_msg->header.stamp).seconds();
+  camera_masks_.resize(camera_info_msgs_.size());
+  for (std::size_t i = 0; i < camera_masks_.size(); ++i) {
+    camera_masks_[i] = 1.f ? (lidar_stamp - rclcpp::Time(image_msgs_[i]->header.stamp).seconds()) <
+                               max_camera_lidar_delay_
+                           : 0.f;
+  }
+
   std::vector<Box3D> det_boxes3d;
   std::unordered_map<std::string, double> proc_timing;
   bool is_success =
-    detector_ptr_->detect(pc_msg, image_msgs_, tf_buffer_, det_boxes3d, proc_timing);
+    detector_ptr_->detect(pc_msg, image_msgs_, camera_masks_, tf_buffer_, det_boxes3d, proc_timing);
   if (!is_success) {
     return;
   }
