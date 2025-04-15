@@ -1,3 +1,8 @@
+bevfusion was added to autoware via
+https://github.com/autowarefoundation/autoware_universe/pull/10024
+
+As such, this repository will be archived
+
 
 # Build the image
 
